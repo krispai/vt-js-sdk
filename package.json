@@ -1,0 +1,48 @@
+{
+  "name": "@krispai/krisp-vt-sdk",
+  "version": "1.0.0",
+  "description": "Krisp Voice Translation SDK — real-time speech-to-speech translation for the browser.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "esbuild ./src/index.ts --bundle --format=esm --platform=browser --outfile=dist/index.js && tsc --emitDeclarationOnly",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "krisp",
+    "voice-translation",
+    "speech",
+    "translation",
+    "sdk",
+    "real-time",
+    "webrtc",
+    "websocket",
+    "audio"
+  ],
+  "author": "Krisp Technologies, Inc.",
+  "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://github.com/krispai/vt-js-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/krispai/vt-js-sdk/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/krispai/vt-js-sdk.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.11",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {}
+}

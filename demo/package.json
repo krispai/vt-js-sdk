@@ -1,0 +1,20 @@
+{
+  "name": "krisp-vt-sdk-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "start": "npm --prefix .. run build && vite"
+  },
+  "devDependencies": {
+    "terser": "^5.46.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.7"
+  },
+  "dependencies": {
+    "@krispai/krisp-vt-sdk": "file:.."
+  }
+}

@@ -1,0 +1,7 @@
+{
+    "dictionary": {
+        "hello": "barev",
+        "world": "bar"
+    },
+    "vocabulary": ["Krisp", "SDK", "WebRTC"]
+}

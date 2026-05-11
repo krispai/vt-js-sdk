@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Krisp VT SDK Demo</title>
+  </head>
+  <body>
+    <div id="app">
+      <div class="container">
+        <h1>Krisp VT SDK — Preview Mode</h1>
+        <p class="subtitle">
+          Speak in your language, hear in your language — powered by Krisp
+          Translation API
+        </p>
+
+        <div class="section">
+          <div class="section-title">
+            <span class="badge badge-krisp-sdk">Translation</span>
+            API Key
+          </div>
+          <div class="input-group">
+            <label for="krispApiKey">Krisp API Key</label>
+            <div style="display: flex; gap: 8px;">
+              <input
+                type="text"
+                id="krispApiKey"
+                placeholder="Enter your Krisp API key"
+                style="flex: 1;"
+              />
+              <button id="loadApiKeyBtn" class="btn-success" style="white-space: nowrap;">
+                Load
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span class="badge badge-krisp-sdk">Translation</span>
+            Language Configuration
+          </div>
+          <div class="input-group">
+            <label for="fromLang">From Language (Your Voice)</label>
+            <select id="fromLang" class="select-input" disabled>
+              <option value="">Loading languages...</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label for="toLang">To Language (Translated Output)</label>
+            <select id="toLang" class="select-input" disabled>
+              <option value="">Loading languages...</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label for="voice">Voice</label>
+            <select id="voice" class="select-input">
+              <option value="male" selected>Male</option>
+              <option value="female">Female</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span class="badge badge-krisp-sdk">Translation</span>
+            Transcript Options
+          </div>
+          <div class="transcript-options-grid">
+            <label class="transcript-option-label">
+              <input type="checkbox" id="transcriptInterim" />
+              <span>
+                <strong>Interim</strong>
+                <small>In-progress partial text as you speak</small>
+              </span>
+            </label>
+            <label class="transcript-option-label">
+              <input type="checkbox" id="transcriptFinal" checked />
+              <span>
+                <strong>Final</strong>
+                <small>Completed sentence in source language</small>
+              </span>
+            </label>
+            <label class="transcript-option-label">
+              <input type="checkbox" id="transcriptTranslate" checked />
+              <span>
+                <strong>Translated</strong>
+                <small>Completed sentence in target language</small>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="section preview-mode-section">
+          <!-- Decorative elements -->
+          <div class="preview-decorator-top-right"></div>
+          <div class="preview-decorator-bottom-left"></div>
+
+          <div class="preview-content">
+            <div class="preview-header">
+              <div class="preview-icon">🎧</div>
+              <div>
+                <h3 class="preview-title-text">Preview Mode</h3>
+                <p class="preview-subtitle-text">
+                  Test translation without joining a call
+                </p>
+              </div>
+            </div>
+
+            <!-- Preview Status -->
+            <div id="previewStatus" class="preview-status">
+              Ready to test translation
+            </div>
+
+            <div class="preview-info-box">
+              <div class="preview-info-content">
+                <div class="preview-info-icon">ℹ️</div>
+                <div class="preview-info-text">
+                  <p>
+                    <strong>How it works:</strong><br />
+                    Microphone → Translation → Speaker (Single stream, minimal latency)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Background Voice Cancellation -->
+            <div class="nc-controls">
+              <label class="nc-toggle-label" for="bvcToggle">
+                <input type="checkbox" id="bvcToggle" />
+                Background Voice Cancellation
+              </label>
+            </div>
+
+            <!-- Volume Controls -->
+            <div class="preview-volume-controls">
+              <div class="preview-volume-row">
+                <label for="originalGain">
+                  Original Audio: <span id="originalGainValue">20%</span>
+                </label>
+                <input
+                  type="range"
+                  id="originalGain"
+                  min="0"
+                  max="100"
+                  value="20"
+                  style="width: 100%"
+                />
+              </div>
+              <div class="preview-volume-row">
+                <label for="translatedGain">
+                  Translated Audio: <span id="translatedGainValue">80%</span>
+                </label>
+                <input
+                  type="range"
+                  id="translatedGain"
+                  min="0"
+                  max="100"
+                  value="80"
+                  style="width: 100%"
+                />
+              </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="button-group preview-button-group">
+              <button id="previewStartBtn" class="preview-start-btn">
+                🎤 Start Preview
+              </button>
+              <button id="previewStopBtn" class="preview-stop-btn" disabled>
+                ⏹️ Stop Preview
+              </button>
+            </div>
+
+            <!-- Live transcripts inside preview card -->
+            <div id="previewTranscriptArea" class="preview-transcript-area" style="display:none;">
+              <div class="preview-transcript-header">
+                <span>Live Transcripts</span>
+                <button id="clearPreviewTranscriptsBtn" class="btn-clear-preview-transcripts">Clear</button>
+              </div>
+              <div class="preview-transcript-panels">
+                <div class="preview-transcript-column">
+                  <div class="preview-transcript-col-label" id="previewOriginalLabel">🎤 Original</div>
+                  <div id="previewOriginalTranscripts" class="preview-transcript-list"></div>
+                </div>
+                <div class="preview-transcript-column">
+                  <div class="preview-transcript-col-label" id="previewTranslatedLabel">🌐 Translated</div>
+                  <div id="previewTranslatedTranscripts" class="preview-transcript-list"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Connection Status</div>
+          <div class="connection-status">
+            <div class="status-indicator status-disconnected" id="sdkStatus">
+              <div class="status-indicator-title">Krisp SDK Processing</div>
+              <div class="status-indicator-value">⚪ Disconnected</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="section">
+          <div class="section-title">Status Log</div>
+          <div id="status" class="status status-info">
+            Ready to start. Enter your Krisp API key above.
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
