@@ -13,11 +13,19 @@ import { WebSocketTransportService } from "./websocket-transport";
  *
  * Transport layer: raw WebSocket (PCM16 @ 16 kHz).
  */
+/** Format constant emitted with onRawAudioChunk – matches the VT backend wire format. */
+const RAW_AUDIO_INFO = Object.freeze({
+  sampleRate: 16000,
+  format: "pcm_s16le",
+  channels: 1,
+} as const);
+
 export class KrispVTSDK {
   private _state: ISDKStates;
 
   private _apiKey: string;
   private _wsBaseUrl: string | undefined;
+  private _disableInternalPlayback: boolean;
   private _hooks: IHooks;
   private _logger: LoggingService;
   private _errorHandler: ErrorHandlingService;
@@ -30,11 +38,13 @@ export class KrispVTSDK {
     this._state = States.INITIAL;
     this._apiKey = config.apiKey;
     this._wsBaseUrl = config.wsBaseUrl;
+    this._disableInternalPlayback = config.disableInternalPlayback ?? false;
     this._hooks = {
       onReady: () => {},
       onConnected: () => {},
       onDisconnected: () => {},
       onProcessedAudio: () => {},
+      onRawAudioChunk: () => {},
       onError: () => {},
       onMessage: () => {},
     };
@@ -47,7 +57,11 @@ export class KrispVTSDK {
       this._errorHandler,
       config.baseUrl
     );
-    this._audioOutput = new AudioOutputService(this._hooks, this._logger);
+    this._audioOutput = new AudioOutputService(
+      this._hooks,
+      this._logger,
+      config.audioOutput
+    );
   }
 
   /**
@@ -168,7 +182,19 @@ export class KrispVTSDK {
           }
         },
         onAudioChunk: (buffer: ArrayBuffer) => {
-          this._audioOutput.addPCM16Chunk(buffer);
+          // Always notify advanced consumers first, with a fresh copy so they
+          // can transfer / detach the buffer without affecting playback.
+          const rawCb = this._hooks.onRawAudioChunk;
+          if (rawCb) {
+            try {
+              rawCb(buffer.slice(0), RAW_AUDIO_INFO);
+            } catch (err) {
+              this._logger.warn("VT Session: onRawAudioChunk hook threw", err);
+            }
+          }
+          if (!this._disableInternalPlayback) {
+            this._audioOutput.addPCM16Chunk(buffer);
+          }
         },
         onError: (error: Error, code: VtErrorType, context?: Record<string, any>) => {
           this._errorHandler.emitError(error, code, context);
@@ -237,8 +263,12 @@ export class KrispVTSDK {
     this._setState(States.PROCESSING);
     this._logger.info("VT Session: Starting audio processing...");
 
-    // Initialise output stream and emit it via onProcessedAudio
-    this._audioOutput.initOutputStream();
+    // Initialise output stream and emit it via onProcessedAudio.
+    // Skip if the consumer opted out of internal playback (they are
+    // doing their own playback via onRawAudioChunk).
+    if (!this._disableInternalPlayback) {
+      this._audioOutput.initOutputStream();
+    }
 
     // Start capturing input audio and streaming it over the WebSocket
     this._audioCapture = new AudioCaptureService(this._logger, (buffer: ArrayBuffer) => {

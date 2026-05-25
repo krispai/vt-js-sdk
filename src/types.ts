@@ -59,6 +59,33 @@ export interface IStartConfig {
   metadata?: object;
 }
 
+/**
+ * Audio output tuning.
+ *
+ * The SDK plays incoming PCM16 through a jitter-buffered queue.
+ * Increase the buffers if you observe occasional clicks or rebuffers under
+ * heavy main-thread load; decrease them to reduce playback latency.
+ *
+ * All values are in **samples at 16 kHz** (1000 samples ≈ 62.5 ms).
+ */
+export interface IAudioOutputConfig {
+  /**
+   * Samples that must be queued before playback starts (or restarts after
+   * an underrun). Default: 4000 (~250 ms).
+   */
+  prebufferSamples?: number;
+  /**
+   * If the queue drops below this and runs out, a rebuffer is triggered.
+   * Default: 2400 (~150 ms). Must be ≤ prebufferSamples.
+   */
+  rebufferSamples?: number;
+  /**
+   * Hard cap on queued samples. Older audio is dropped above this so a
+   * paused / slow consumer doesn't grow latency unbounded. Default: 48000 (~3 s).
+   */
+  maxQueueSamples?: number;
+}
+
 export interface IKrispVTSDKConfig {
   apiKey: string;
   logLevel?: LogLevel;
@@ -66,6 +93,15 @@ export interface IKrispVTSDKConfig {
   baseUrl?: string;
   /** Overrides the WebSocket base URL (default: wss://streaming.krisp.ai) */
   wsBaseUrl?: string;
+  /**
+   * If true, the SDK will not build an internal MediaStream for translated
+   * audio playback. Use with `IHooks.onRawAudioChunk` if you want to
+   * implement playback yourself (e.g. mixing with the mic, custom buffering,
+   * recording to disk). Default: false.
+   */
+  disableInternalPlayback?: boolean;
+  /** Override jitter-buffer / playback tuning. */
+  audioOutput?: IAudioOutputConfig;
 }
 
 /**
@@ -132,11 +168,32 @@ export interface IErrorHandler {
   setHooks(hooks: IHooks): void;
 }
 
+/** Format descriptor passed to onRawAudioChunk so consumers don't need to hardcode it. */
+export interface IRawAudioChunkInfo {
+  sampleRate: 16000;
+  format: "pcm_s16le";
+  channels: 1;
+}
+
 export interface IHooks {
   onReady?: () => void;
   onConnected?: () => void;
   onDisconnected?: () => void;
+  /**
+   * Translated audio as a ready-to-play MediaStream. Attach it to an
+   * `<audio>` element via `audio.srcObject = stream`. Not emitted when
+   * `IKrispVTSDKConfig.disableInternalPlayback` is true.
+   */
   onProcessedAudio?: (stream: MediaStream) => void;
+  /**
+   * Raw translated PCM16 chunk as it arrives from the server. Useful if you
+   * want to do your own playback, mixing, or recording. Always emitted (even
+   * when internal playback is enabled) so advanced consumers can tap into the
+   * raw stream.
+   *
+   * `buffer` is a fresh `ArrayBuffer` you may consume / transfer.
+   */
+  onRawAudioChunk?: (buffer: ArrayBuffer, info: IRawAudioChunkInfo) => void;
   onError?: (error: IErrorPayload) => void;
   /**
    * Inbound WebSocket JSON after `JSON.parse` (excluding handled handshake / error frames).

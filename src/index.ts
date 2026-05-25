@@ -15,6 +15,8 @@ export type {
   ICustomError,
   IErrorPayload,
   IHooks,
+  IRawAudioChunkInfo,
+  IAudioOutputConfig,
   VtLanguageInfo,
   IKrispVTSDKConfig,
 } from "./types";
