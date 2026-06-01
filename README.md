@@ -640,7 +640,7 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for th
 
 ## License
 
-License TBD. Copyright 2026 Krisp Technologies, Inc.
+Use of this SDK is governed by the [Krisp API Terms of Service](https://krisp.ai/api-terms-of-service/). Copyright 2026 Krisp Technologies, Inc.
 
 ---
 

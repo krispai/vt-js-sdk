@@ -27,7 +27,7 @@
     "audio"
   ],
   "author": "Krisp Technologies, Inc.",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "SEE LICENSE IN https://krisp.ai/api-terms-of-service/",
   "homepage": "https://github.com/krispai/vt-js-sdk#readme",
   "bugs": {
     "url": "https://github.com/krispai/vt-js-sdk/issues"
@@ -36,9 +36,19 @@
     "type": "git",
     "url": "git+https://github.com/krispai/vt-js-sdk.git"
   },
+  "engines": {
+    "node": ">=18"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": true,
+    "registry": "https://registry.npmjs.org"
   },
   "devDependencies": {
     "esbuild": "^0.25.11",
