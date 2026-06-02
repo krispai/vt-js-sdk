@@ -35,16 +35,15 @@ export class WebSocketTransportService {
    *
    * @param apiKey     Krisp API key – sent as `Api-Key <key>` in the authorization param.
    * @param config     Translation config forwarded as the ClientHello body.
-   * @param wsBaseUrl  Override the WebSocket base URL (default: WS_BASE_URL constant).
    */
-  connect(apiKey: string, config: IStartConfig, wsBaseUrl?: string): Promise<void> {
+  connect(apiKey: string, config: IStartConfig): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       this._resolveConnect = resolve;
       this._rejectConnect = reject;
       this._connectSettled = false;
 
       try {
-        const wsUrl = this._buildWsUrl(apiKey, wsBaseUrl);
+        const wsUrl = this._buildWsUrl(apiKey);
         this.logger.debug("VT Session: Connecting WebSocket:", wsUrl);
 
         this._ws = new WebSocket(wsUrl);
@@ -113,10 +112,10 @@ export class WebSocketTransportService {
 
   /**
    * Build the WebSocket URL.
-   * Pattern: `${wsBaseUrl}/vt?authorization=Api-Key <apiKey>`
+   * Pattern: `${WS_BASE_URL}/vt?authorization=Api-Key <apiKey>`
    */
-  private _buildWsUrl(apiKey: string, wsBaseUrl?: string): string {
-    const base = (wsBaseUrl ?? WS_BASE_URL).replace(/\/+$/, "");
+  private _buildWsUrl(apiKey: string): string {
+    const base = WS_BASE_URL.replace(/\/+$/, "");
     const auth = encodeURIComponent(`Api-Key ${apiKey}`);
     return `${base}/vt?authorization=${auth}`;
   }

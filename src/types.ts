@@ -89,10 +89,6 @@ export interface IAudioOutputConfig {
 export interface IKrispVTSDKConfig {
   apiKey: string;
   logLevel?: LogLevel;
-  /** Overrides the REST API base URL (default: https://api.developers.krisp.ai) */
-  baseUrl?: string;
-  /** Overrides the WebSocket base URL (default: wss://streaming.krisp.ai) */
-  wsBaseUrl?: string;
   /**
    * If true, the SDK will not build an internal MediaStream for translated
    * audio playback. Use with `IHooks.onRawAudioChunk` if you want to

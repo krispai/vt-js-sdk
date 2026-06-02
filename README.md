@@ -96,8 +96,6 @@ new KrispVTSDK(config: IKrispVTSDKConfig)
 |-----------|------|----------|---------|-------------|
 | `apiKey` | `string` | ✅ | — | Your Krisp API key |
 | `logLevel` | `LogLevel` | ❌ | `NONE` | Logging verbosity |
-| `baseUrl` | `string` | ❌ | `https://api.developers.krisp.ai` | Override REST API base URL |
-| `wsBaseUrl` | `string` | ❌ | `wss://streaming.krisp.ai` | Override WebSocket base URL |
 
 ---
 

@@ -24,7 +24,6 @@ export class KrispVTSDK {
   private _state: ISDKStates;
 
   private _apiKey: string;
-  private _wsBaseUrl: string | undefined;
   private _disableInternalPlayback: boolean;
   private _hooks: IHooks;
   private _logger: LoggingService;
@@ -37,7 +36,6 @@ export class KrispVTSDK {
   constructor(config: IKrispVTSDKConfig) {
     this._state = States.INITIAL;
     this._apiKey = config.apiKey;
-    this._wsBaseUrl = config.wsBaseUrl;
     this._disableInternalPlayback = config.disableInternalPlayback ?? false;
     this._hooks = {
       onReady: () => {},
@@ -54,8 +52,7 @@ export class KrispVTSDK {
     this._translationAPI = new TranslationAPIService(
       this._apiKey,
       this._logger,
-      this._errorHandler,
-      config.baseUrl
+      this._errorHandler
     );
     this._audioOutput = new AudioOutputService(
       this._hooks,
@@ -202,7 +199,7 @@ export class KrispVTSDK {
       }
     );
 
-    const connectPromise = this._wsTransport.connect(this._apiKey, config, this._wsBaseUrl);
+    const connectPromise = this._wsTransport.connect(this._apiKey, config);
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(
         () => reject(new Error(`${VT_MESSAGES.JOIN_TIMEOUT} after ${WS_CONNECT_TIMEOUT_MS / 1000} seconds`)),

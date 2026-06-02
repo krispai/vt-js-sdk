@@ -11,8 +11,7 @@ export class TranslationAPIService {
   constructor(
     private apiKey: string,
     private logger: ILogger,
-    private errorHandler: IErrorHandler,
-    private baseUrl?: string
+    private errorHandler: IErrorHandler
   ) {}
 
   /**
@@ -29,7 +28,7 @@ export class TranslationAPIService {
     try {
       let response: Response;
       try {
-        response = await fetch(this.resolveUrl(LANGUAGES_URL), {
+        response = await fetch(LANGUAGES_URL, {
           method: "GET",
           headers: {
             Authorization: `API-key ${this.apiKey}`,
@@ -84,13 +83,5 @@ export class TranslationAPIService {
     } catch {
       return text;
     }
-  }
-
-  private resolveUrl(defaultUrl: string): string {
-    if (!this.baseUrl) {
-      return defaultUrl;
-    }
-    const trimmed = this.baseUrl.replace(/\/+$/, "");
-    return `${trimmed}/v2/sdk/voice-translation/languages`;
   }
 }

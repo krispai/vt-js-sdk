@@ -5,9 +5,8 @@ export const LANGUAGES_URL =
   "https://api.developers.krisp.ai/v2/sdk/voice-translation/languages";
 
 /**
- * Default WebSocket base URL for the Krisp VT streaming service.
+ * WebSocket base URL for the Krisp VT streaming service.
  * The SDK appends the session path returned by the REST API when the path is relative.
- * Override via IKrispVTSDKConfig.wsBaseUrl.
  */
 export const WS_BASE_URL = "wss://streaming.krisp.ai";
 
@@ -20,7 +19,7 @@ export const WS_CONNECT_TIMEOUT_MS = 20000;
 /**
  * SDK version
  */
-export const SDK_VERSION = "1.0.0";
+export const SDK_VERSION = "1.0.1";
 
 /**
  * Vocabulary validation constraints
