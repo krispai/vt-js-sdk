@@ -507,30 +507,6 @@ await sdk.start({
 });
 ```
 
----
-
-## Supported Languages
-
-Use `getLanguagesList()` to retrieve the current live list from the API.
-
-Common codes:
-
-| Code | Language |
-|------|----------|
-| `en-US` | English (US) |
-| `es-ES` | Spanish (Spain) |
-| `fr-FR` | French |
-| `de-DE` | German |
-| `it-IT` | Italian |
-| `pt-PT` | Portuguese |
-| `ru-RU` | Russian |
-| `ja-JP` | Japanese |
-| `ko-KR` | Korean |
-| `zh-CN` | Chinese (Simplified) |
-| `ar-SA` | Arabic |
-| `hi-IN` | Hindi |
-
----
 
 ## SDK Architecture
 
