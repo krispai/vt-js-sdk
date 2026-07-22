@@ -1,6 +1,6 @@
 {
   "name": "@krisp.ai/krisp-vt-sdk",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Krisp Voice Translation SDK — real-time speech-to-speech translation for the browser.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
