@@ -25,7 +25,7 @@ Real-time voice translation SDK powered by Krisp AI. Streams PCM16 audio over a 
 ## Installation
 
 ```bash
-@krisp.ai/krisp-vt-sdk
+npm i @krisp.ai/krisp-vt-sdk
 ```
 
 **`package.json`:**
