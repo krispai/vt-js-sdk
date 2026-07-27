@@ -1,6 +1,6 @@
 # Krisp VT JS SDK
 
-[![npm version](https://img.shields.io/npm/v/@krispai/krisp-vt-sdk.svg)](https://www.npmjs.com/package/@krispai/krisp-vt-sdk)
+[![npm version](https://img.shields.io/npm/v/@krisp.ai/krisp-vt-sdk)](https://www.npmjs.com/package/@krisp.ai/krisp-vt-sdk)
 [![CI](https://github.com/krispai/vt-js-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/krispai/vt-js-sdk/actions/workflows/ci.yml)
 
 Real-time voice translation SDK powered by Krisp AI. Streams PCM16 audio over a raw WebSocket, receives synthesised translated speech back on the same connection, and emits it as a `MediaStream` ready for playback or publishing.
@@ -33,7 +33,7 @@ npm i @krisp.ai/krisp-vt-sdk
 ```json
 {
   "dependencies": {
-    "@krispai/krisp-vt-sdk": "^1.0.0"
+    "@krisp.ai/krisp-vt-sdk": "^1.0.0"
   }
 }
 ```
@@ -45,7 +45,7 @@ The package ships ESM with TypeScript declarations and zero runtime dependencies
 ## Basic Usage
 
 ```javascript
-import { KrispVTSDK, LogLevel } from '@krispai/krisp-vt-sdk';
+import { KrispVTSDK, LogLevel } from '@krisp.ai/krisp-vt-sdk';
 
 const sdk = new KrispVTSDK({
   apiKey: 'your-krisp-api-key',
@@ -349,7 +349,7 @@ sdk.setHooks({
 ## Error Handling
 
 ```javascript
-import { VtErrorType } from '@krispai/krisp-vt-sdk';
+import { VtErrorType } from '@krisp.ai/krisp-vt-sdk';
 
 sdk.setHooks({
   onError: (error) => {

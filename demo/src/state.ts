@@ -1,4 +1,4 @@
-import type { KrispVTSDK } from "@krispai/krisp-vt-sdk";
+import type { KrispVTSDK } from "@krisp.ai/krisp-vt-sdk";
 
 export const state = {
   krispSDK: null as KrispVTSDK | null,

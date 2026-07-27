@@ -1,4 +1,4 @@
-import { KrispVTSDK, type VtLanguageInfo, LogLevel } from "@krispai/krisp-vt-sdk";
+import { KrispVTSDK, type VtLanguageInfo, LogLevel } from "@krisp.ai/krisp-vt-sdk";
 import { elements } from "./elements";
 import { showStatus } from "./ui";
 

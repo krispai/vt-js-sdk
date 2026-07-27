@@ -19,7 +19,7 @@ export const WS_CONNECT_TIMEOUT_MS = 20000;
 /**
  * SDK version
  */
-export const SDK_VERSION = "1.0.2";
+export const SDK_VERSION = "1.0.4";
 
 /**
  * Vocabulary validation constraints

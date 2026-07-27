@@ -15,6 +15,6 @@
     "vite": "^7.1.7"
   },
   "dependencies": {
-    "@krispai/krisp-vt-sdk": "file:.."
+    "@krisp.ai/krisp-vt-sdk": "file:.."
   }
 }

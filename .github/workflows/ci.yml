@@ -21,6 +21,15 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Check docs and demo reference the published package name
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          BAD=$(grep -rhoE '@krisp[a-z.]*/[a-z-]+' README.md demo/package.json demo/src \
+                  | sort -u | grep -vx "$NAME" || true)
+          if [ -n "$BAD" ]; then
+            echo "::error::Expected only $NAME, found:"; echo "$BAD"; exit 1
+          fi
+
       - name: Install SDK dependencies
         run: npm ci
 

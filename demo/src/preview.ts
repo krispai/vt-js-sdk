@@ -1,4 +1,4 @@
-import { KrispVTSDK } from "@krispai/krisp-vt-sdk";
+import { KrispVTSDK } from "@krisp.ai/krisp-vt-sdk";
 import { elements } from "./elements";
 import { state } from "./state";
 import {
