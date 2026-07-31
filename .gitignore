@@ -8,9 +8,10 @@ packages/
 .env.local
 .env.*.local
 
-# IDE
+# IDE / agent tooling
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
@@ -31,6 +32,9 @@ yarn-error.log*
 /build/
 /release/
 /demo/dist/
+
+# Test coverage output
+coverage/
 
 # npm pack artifacts
 *.tgz

@@ -36,6 +36,14 @@ jobs:
       - name: Build SDK
         run: npm run build
 
+      - name: Typecheck
+        run: npm run typecheck
+
+      # `test:coverage`, not `test` — the coverage reporter is what evaluates the
+      # ratchet thresholds in vitest.config.ts.
+      - name: Test
+        run: npm run test:coverage
+
       - name: Verify package contents
         run: npm pack --dry-run
 

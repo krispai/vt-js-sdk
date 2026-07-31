@@ -26,6 +26,9 @@ export interface IElements {
   transcriptInterim: HTMLInputElement;
   transcriptFinal: HTMLInputElement;
   transcriptTranslate: HTMLInputElement;
+  // Live counters fed by IHooks.onRawAudioChunk
+  rawAudioStats: HTMLDivElement;
+  rawAudioStatsValue: HTMLSpanElement;
 }
 
 export const elements: IElements = {
@@ -53,4 +56,6 @@ export const elements: IElements = {
   transcriptInterim: document.getElementById("transcriptInterim") as HTMLInputElement,
   transcriptFinal: document.getElementById("transcriptFinal") as HTMLInputElement,
   transcriptTranslate: document.getElementById("transcriptTranslate") as HTMLInputElement,
+  rawAudioStats: document.getElementById("rawAudioStats") as HTMLDivElement,
+  rawAudioStatsValue: document.getElementById("rawAudioStatsValue") as HTMLSpanElement,
 };

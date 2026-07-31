@@ -7,6 +7,7 @@ import { TranslationAPIService } from "./translation-api";
 import { AudioOutputService } from "./audio-output";
 import { AudioCaptureService } from "./audio-capture";
 import { WebSocketTransportService } from "./websocket-transport";
+import { floatToPcm16 } from "./pcm";
 
 /**
  * Main Krisp VT SDK class – orchestrates all SDK functionality.
@@ -20,6 +21,29 @@ const RAW_AUDIO_INFO = Object.freeze({
   channels: 1,
 } as const);
 
+function toUplinkPcm16(
+  pcm: ArrayBuffer | Int16Array | Float32Array
+): ArrayBuffer | null {
+  if (pcm instanceof Float32Array) {
+    return floatToPcm16(pcm).buffer as ArrayBuffer;
+  }
+
+  if (pcm instanceof Int16Array) {
+    return pcm.byteOffset === 0 && pcm.byteLength === pcm.buffer.byteLength
+      ? (pcm.buffer as ArrayBuffer)
+      : (pcm.buffer.slice(
+          pcm.byteOffset,
+          pcm.byteOffset + pcm.byteLength
+        ) as ArrayBuffer);
+  }
+
+  if (pcm instanceof ArrayBuffer) {
+    return pcm.byteLength % 2 === 0 ? pcm : null;
+  }
+
+  return null;
+}
+
 export class KrispVTSDK {
   private _state: ISDKStates;
 
@@ -32,6 +56,8 @@ export class KrispVTSDK {
   private _audioOutput: AudioOutputService;
   private _audioCapture: AudioCaptureService | null = null;
   private _wsTransport: WebSocketTransportService | null = null;
+  private _inputMode: "stream" | "push" | null = null;
+  private _inputErrorReported = false;
 
   constructor(config: IKrispVTSDKConfig) {
     this._state = States.INITIAL;
@@ -45,6 +71,8 @@ export class KrispVTSDK {
       onRawAudioChunk: () => {},
       onError: () => {},
       onMessage: () => {},
+      onTranscript: () => {},
+      onTranslate: () => {},
     };
 
     this._logger = new LoggingService(config.logLevel);
@@ -62,10 +90,10 @@ export class KrispVTSDK {
   }
 
   /**
-   * Set hook callbacks for SDK events.
+   * Set hook callbacks for SDK events. Chainable.
    */
   setHooks(hooks: Partial<IHooks>): this {
-    this._hooks = { ...this._hooks, ...hooks };
+    Object.assign(this._hooks, hooks);
     this._errorHandler.setHooks(this._hooks);
     this._audioOutput.setHooks(this._hooks);
     this._translationAPI.setErrorHandler(this._errorHandler);
@@ -236,11 +264,16 @@ export class KrispVTSDK {
     }
 
     if (this._state === States.PROCESSING) {
-      this._logger.warn("VT Session: Already processing – stopping first...");
-      await this.stop();
-    }
-
-    if (this._state !== States.CONNECTED) {
+      if (this._inputMode === "push") {
+        this._reportInputError(
+          VT_MESSAGES.INPUT_MODE_CONFLICT,
+          VtErrorType.InvalidSessionConfigurations
+        );
+        return;
+      }
+      this._logger.warn("VT Session: Already processing – swapping the input stream");
+      await this._teardownCapture();
+    } else if (this._state !== States.CONNECTED) {
       this._logger.warn(VT_MESSAGES.SESSION_NOT_STARTED);
       const err = new Error(VT_MESSAGES.SESSION_NOT_STARTED) as ICustomError;
       err.code = VtErrorType.SessionNotStarted;
@@ -257,6 +290,7 @@ export class KrispVTSDK {
       throw err;
     }
 
+    this._inputMode = "stream";
     this._setState(States.PROCESSING);
     this._logger.info("VT Session: Starting audio processing...");
 
@@ -271,7 +305,78 @@ export class KrispVTSDK {
     this._audioCapture = new AudioCaptureService(this._logger, (buffer: ArrayBuffer) => {
       this._wsTransport?.sendAudio(buffer);
     });
-    this._audioCapture.start(stream);
+
+    try {
+      await this._audioCapture.start(stream);
+    } catch (error) {
+      this._audioCapture = null;
+      this._inputMode = null;
+      this._logger.error("VT Session: Failed to start audio capture", error);
+      this._errorHandler.emitError(
+        error as Error,
+        VtErrorType.InternalErrorClient
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Push raw PCM yourself instead of handing the SDK a MediaStream via
+   * {@link process}. Audio must be **mono at 16 kHz**; for any other rate use
+   * {@link process}, which converts for you.
+   *
+   * Accepted forms:
+   * - `ArrayBuffer` — PCM16 little-endian; byte length must be even
+   * - `Int16Array` — PCM16; views with a non-zero `byteOffset` are handled
+   * - `Float32Array` — normalised samples in [-1, 1]
+   *
+   * The first call after `start()` resolves moves the session to `PROCESSING` and,
+   * unless `disableInternalPlayback` is set, emits the translated output stream via
+   * `onProcessedAudio`.
+   *
+   * A session uses either `process()` or `sendAudio()`, never both; whichever is
+   * used second is rejected and the session is left running.
+   *
+   * **Never throws** — it is called from inside audio callbacks. State and input
+   * problems are reported once per session through `onError` and the chunk dropped.
+   */
+  public sendAudio(pcm: ArrayBuffer | Int16Array | Float32Array): void {
+    if (this._state !== States.CONNECTED && this._state !== States.PROCESSING) {
+      this._reportInputError(
+        VT_MESSAGES.SESSION_NOT_STARTED,
+        VtErrorType.SessionNotStarted
+      );
+      return;
+    }
+
+    if (this._inputMode === "stream") {
+      this._reportInputError(
+        VT_MESSAGES.INPUT_MODE_CONFLICT,
+        VtErrorType.InvalidSessionConfigurations
+      );
+      return;
+    }
+
+    const buffer = toUplinkPcm16(pcm);
+    if (buffer === null) {
+      this._reportInputError(
+        VT_MESSAGES.INVALID_PCM_INPUT,
+        VtErrorType.InvalidInputData
+      );
+      return;
+    }
+    if (buffer.byteLength === 0) return;
+
+    if (this._inputMode === null) {
+      this._inputMode = "push";
+      this._setState(States.PROCESSING);
+      this._logger.info("VT Session: Starting audio processing (pushed PCM)...");
+      if (!this._disableInternalPlayback) {
+        this._audioOutput.initOutputStream();
+      }
+    }
+
+    this._wsTransport?.sendAudio(buffer);
   }
 
   /**
@@ -282,10 +387,9 @@ export class KrispVTSDK {
       this._logger.info("VT Session: Stopping...");
 
       // Stop audio capture
-      if (this._audioCapture) {
-        this._audioCapture.stop();
-        this._audioCapture = null;
-      }
+      await this._teardownCapture();
+      this._inputMode = null;
+      this._inputErrorReported = false;
 
       // Close WebSocket
       if (this._wsTransport) {
@@ -309,6 +413,26 @@ export class KrispVTSDK {
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Release the capture graph without touching the WebSocket, so the session
+   * survives an input swap.
+   */
+  private async _teardownCapture(): Promise<void> {
+    if (this._audioCapture) {
+      await this._audioCapture.stop();
+      this._audioCapture = null;
+    }
+  }
+
+  private _reportInputError(message: string, code: VtErrorType): void {
+    if (this._inputErrorReported) return;
+    this._inputErrorReported = true;
+    this._logger.warn(message);
+    const err = new Error(message) as ICustomError;
+    err.code = code;
+    this._errorHandler.emitError(err, code);
+  }
 
   private _validateVocabularyWord(word: string): { valid: boolean; error?: string } {
     const trimmed = word.trim();

@@ -1,6 +1,7 @@
 import type { IHooks, ILogger, IStartConfig } from "./types";
 import { VtErrorType } from "./types";
-import { WS_BASE_URL, VT_MESSAGES } from "./constants";
+import { WS_BASE_URL, VT_MESSAGES, CAPTURE_SAMPLE_RATE } from "./constants";
+import { parseTranscriptEvent, parseTranslateEvent } from "./message-parsing";
 
 export interface IWebSocketTransportCallbacks {
   onConnected: () => void;
@@ -33,8 +34,8 @@ export class WebSocketTransportService {
   /**
    * Open the WebSocket, send ClientHello, and wait for the server "ready" message.
    *
-   * @param apiKey     Krisp API key – sent as `Api-Key <key>` in the authorization param.
-   * @param config     Translation config forwarded as the ClientHello body.
+   * @param apiKey      Krisp API key – sent as `Api-Key <key>` in the authorization param.
+   * @param config      Translation config forwarded as the ClientHello body.
    */
   connect(apiKey: string, config: IStartConfig): Promise<void> {
     return new Promise<void>((resolve, reject) => {
@@ -111,6 +112,18 @@ export class WebSocketTransportService {
   // ── Private helpers ──────────────────────────────────────────────────────────
 
   /**
+   * Invoke a consumer hook without letting a thrown error escape into
+   * `ws.onmessage`, where it would abort the rest of the dispatch.
+   */
+  private _safeHook(name: string, invoke: () => void): void {
+    try {
+      invoke();
+    } catch (err) {
+      this.logger.warn(`VT Session: ${name} hook threw`, err);
+    }
+  }
+
+  /**
    * Build the WebSocket URL.
    * Pattern: `${WS_BASE_URL}/vt?authorization=Api-Key <apiKey>`
    */
@@ -129,7 +142,7 @@ export class WebSocketTransportService {
       ...(config.transcript ?? transcriptOn),
     };
     const cfg: Record<string, unknown> = {
-      audio: { format: "pcm_s16le", sample_rate: 16000 },
+      audio: { format: "pcm_s16le", sample_rate: CAPTURE_SAMPLE_RATE },
       source_language: config.from,
       target_language: config.to,
       voice: config.voice ?? "male",
@@ -148,6 +161,10 @@ export class WebSocketTransportService {
 
     if (config.features && Object.keys(config.features).length > 0) {
       cfg["features"] = config.features;
+    }
+
+    if (config.metadata && Object.keys(config.metadata).length > 0) {
+      cfg["metadata"] = config.metadata;
     }
 
     return { config: cfg };
@@ -189,8 +206,26 @@ export class WebSocketTransportService {
       return;
     }
 
-    // ── All other JSON → pass through unchanged (generic payload for the app) ─
-    this.hooks.onMessage?.(msg as unknown);
+    // ── Typed text events ──────────────────────────────────────────────────────
+    // Parsed up front so a throwing hook cannot stop later events being delivered.
+    const transcript = parseTranscriptEvent(msg);
+    const translate = parseTranslateEvent(msg);
+
+    // ── Generic passthrough — fires for every frame ────────────────────────────
+    const onMessage = this.hooks.onMessage;
+    if (onMessage) {
+      this._safeHook("onMessage", () => onMessage(msg as unknown));
+    }
+
+    const onTranscript = this.hooks.onTranscript;
+    if (transcript && onTranscript) {
+      this._safeHook("onTranscript", () => onTranscript(transcript));
+    }
+
+    const onTranslate = this.hooks.onTranslate;
+    if (translate && onTranslate) {
+      this._safeHook("onTranslate", () => onTranslate(translate));
+    }
   }
 
   /** Map an HTTP-style error code from the server to a VtErrorType. */

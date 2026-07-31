@@ -1,6 +1,10 @@
 import type { IErrorPayload, IHooks, ILogger, IAudioOutputConfig } from "./types";
 import { VtErrorType } from "./types";
 import { VT_MESSAGES } from "./constants";
+import {
+  PLAYBACK_WORKLET_PROCESSOR,
+  PLAYBACK_WORKLET_SOURCE,
+} from "./playback-worklet-source";
 
 /**
  * Audio output service.
@@ -14,15 +18,20 @@ import { VT_MESSAGES } from "./constants";
  * be re-anchored to `currentTime`, and you would hear clicks at every
  * chunk boundary.
  *
- * The current design mirrors the AudioPlayer used in the rt-inference-gateway
- * demo (which doesn't crackle):
- *   - one continuous-output ScriptProcessorNode connected to a
- *     MediaStreamAudioDestinationNode
- *   - an internal Float32 sample queue
+ * The current design:
+ *   - one continuous-output render node feeding a MediaStreamAudioDestinationNode
+ *   - a Float32 sample queue
  *   - a pre-buffer fill before output starts
  *   - rebuffer-with-fade on underrun to avoid clicks
  *   - a hard cap on the queue to prevent latency growth if the consumer
  *     pauses the destination
+ *
+ * The render node is an AudioWorklet, so playback is pulled on the audio thread
+ * rather than the main thread. Because `process()` must fill its output
+ * synchronously, the queue lives inside the worklet — see
+ * src/playback-worklet-source.ts. The `_enqueue` / `_renderInto` pair below is the
+ * main-thread equivalent, driving the ScriptProcessorNode fallback used where
+ * AudioWorklet is unavailable or a CSP blocks `blob:`.
  *
  * Sample rate is 16 kHz to match what the Krisp VT backend sends.
  */
@@ -47,7 +56,15 @@ export class AudioOutputService {
   private _audioContext: AudioContext | null = null;
   private _destination: MediaStreamAudioDestinationNode | null = null;
   private _processor: ScriptProcessorNode | null = null;
+  private _worklet: AudioWorkletNode | null = null;
   private _initialized: boolean = false;
+
+  private _mode: "audioworklet" | "scriptprocessor" | null = null;
+
+  private _pending: Float32Array[] = [];
+
+  /** Invalidates an in-flight attach when cleanup() lands first. */
+  private _generation = 0;
 
   /** FIFO of Float32 sample chunks, already sample-rate-correct. */
   private _queue: Float32Array[] = [];
@@ -108,6 +125,8 @@ export class AudioOutputService {
     }
 
     try {
+      const generation = ++this._generation;
+
       this._audioContext = new AudioContext({
         sampleRate: AudioOutputService.OUTPUT_SAMPLE_RATE,
       });
@@ -117,19 +136,6 @@ export class AudioOutputService {
 
       this._destination = this._audioContext.createMediaStreamDestination();
 
-      // ScriptProcessorNode is deprecated but has near-universal browser support
-      // and matches the AudioCaptureService precedent. AudioWorklet migration
-      // is a follow-up (it requires shipping a worklet file with the bundle).
-      this._processor = this._audioContext.createScriptProcessor(
-        AudioOutputService.OUTPUT_BUFFER_SIZE,
-        0,
-        1
-      );
-      this._processor.onaudioprocess = (event: AudioProcessingEvent) => {
-        this._renderInto(event.outputBuffer.getChannelData(0));
-      };
-      this._processor.connect(this._destination);
-
       this._initialized = true;
       this._started = false;
       this._rebuffering = false;
@@ -137,6 +143,7 @@ export class AudioOutputService {
       this._queue = [];
       this._readOffset = 0;
       this._queuedSamples = 0;
+      this._pending = [];
 
       const outputStream = this._destination.stream;
 
@@ -149,6 +156,7 @@ export class AudioOutputService {
       });
 
       this.hooks.onProcessedAudio?.(outputStream);
+      void this._attachRenderNode(this._audioContext, generation);
     } catch (error) {
       this.logger.error(`${VT_MESSAGES.AUDIO_STREAM_ERROR}:`, error);
       const payload: IErrorPayload = {
@@ -160,9 +168,120 @@ export class AudioOutputService {
     }
   }
 
+  get mode(): "audioworklet" | "scriptprocessor" | null {
+    return this._mode;
+  }
+
+  /**
+   * Attach a render node: AudioWorklet if possible, ScriptProcessorNode if not.
+   * Either way, drain anything that arrived while this was in flight.
+   */
+  private async _attachRenderNode(
+    ctx: AudioContext,
+    generation: number
+  ): Promise<void> {
+    const onWorklet = await this._tryPlaybackWorklet(ctx, generation);
+    if (generation !== this._generation) return;
+
+    if (!onWorklet) this._attachScriptProcessor(ctx);
+    if (generation !== this._generation) return;
+
+    const staged = this._pending;
+    this._pending = [];
+    for (const chunk of staged) this._deliver(chunk);
+  }
+
+  /**
+   * Try the AudioWorklet path. Returns false — without throwing — when the UA has
+   * no AudioWorklet, when a CSP without `blob:` rejects the module, or when the
+   * processor fails to construct.
+   */
+  private async _tryPlaybackWorklet(
+    ctx: AudioContext,
+    generation: number
+  ): Promise<boolean> {
+    if (typeof AudioWorkletNode === "undefined" || !ctx.audioWorklet) {
+      this.logger.warn(VT_MESSAGES.AUDIO_WORKLET_UNAVAILABLE, {
+        reason: "AudioWorklet not supported",
+      });
+      return false;
+    }
+
+    let url: string | null = null;
+    try {
+      const blob = new Blob([PLAYBACK_WORKLET_SOURCE], { type: "text/javascript" });
+      url = URL.createObjectURL(blob);
+      await ctx.audioWorklet.addModule(url);
+    } catch (err) {
+      this.logger.warn(VT_MESSAGES.AUDIO_WORKLET_UNAVAILABLE, err);
+      return false;
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+    }
+
+    if (generation !== this._generation) return true; // cleanup() won
+
+    try {
+      const node = new AudioWorkletNode(ctx, PLAYBACK_WORKLET_PROCESSOR, {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
+        processorOptions: {
+          prebufferSamples: this._prebufferSamples,
+          rebufferSamples: this._rebufferSamples,
+          maxQueueSamples: this._maxQueueSamples,
+          fadeSamples: AudioOutputService.FADE_SAMPLES,
+        },
+      });
+
+      node.onprocessorerror = (err) => {
+        this.logger.error("VT Session: playback worklet processor error", err);
+      };
+
+      node.connect(this._destination!);
+      this._worklet = node;
+      this._mode = "audioworklet";
+      this.logger.debug("VT Session: playback using AudioWorklet");
+      return true;
+    } catch (err) {
+      this.logger.warn(VT_MESSAGES.AUDIO_WORKLET_UNAVAILABLE, err);
+      return false;
+    }
+  }
+
+  /** Deprecated main-thread path, kept as the CSP / old-browser fallback. */
+  private _attachScriptProcessor(ctx: AudioContext): void {
+    const processor = ctx.createScriptProcessor(
+      AudioOutputService.OUTPUT_BUFFER_SIZE,
+      0,
+      1
+    );
+    processor.onaudioprocess = (event: AudioProcessingEvent) => {
+      this._renderInto(event.outputBuffer.getChannelData(0));
+    };
+    processor.connect(this._destination!);
+
+    this._processor = processor;
+    this._mode = "scriptprocessor";
+    this.logger.debug("VT Session: playback using ScriptProcessorNode");
+  }
+
+  /** Hand a decoded block to whichever renderer is attached. */
+  private _deliver(samples: Float32Array): void {
+    if (this._worklet) {
+      this._worklet.port.postMessage({ samples }, [samples.buffer]);
+      return;
+    }
+    if (this._processor) {
+      this._enqueue(samples);
+      return;
+    }
+    this._pending.push(samples);
+  }
+
   /**
    * Decode an incoming PCM16 ArrayBuffer and enqueue it for playback. The
-   * processor pulls from this queue at the AudioContext's render rate, so
+   * renderer pulls from the queue at the AudioContext's render rate, so
    * irregular WebSocket arrival cadence is absorbed by the queue.
    */
   addPCM16Chunk(buffer: ArrayBuffer): void {
@@ -180,7 +299,7 @@ export class AudioOutputService {
         float32[i] = int16[i]! / 32768;
       }
 
-      this._enqueue(float32);
+      this._deliver(float32);
     } catch (error) {
       this.logger.error("VT Session: Error enqueuing audio chunk:", error);
     }
@@ -190,6 +309,8 @@ export class AudioOutputService {
    * Clean up AudioContext and release resources.
    */
   cleanup(): void {
+    this._generation++;
+
     this._initialized = false;
     this._started = false;
     this._rebuffering = false;
@@ -197,7 +318,15 @@ export class AudioOutputService {
     this._queue = [];
     this._readOffset = 0;
     this._queuedSamples = 0;
+    this._pending = [];
+    this._mode = null;
 
+    try { this._worklet?.port.postMessage({ type: "stop" }); } catch (_) {}
+    try { this._worklet?.port.close(); } catch (_) {}
+    try { this._worklet?.disconnect(); } catch (_) {}
+    this._worklet = null;
+
+    if (this._processor) this._processor.onaudioprocess = null;
     try { this._processor?.disconnect(); } catch (_) {}
     this._processor = null;
     this._destination = null;

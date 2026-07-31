@@ -173,6 +173,18 @@
               </button>
             </div>
 
+            <!--
+              Live stats sourced from the SDK's onRawAudioChunk hook.
+              Demonstrates that advanced consumers can tap the raw PCM16
+              stream while the SDK still drives MediaStream playback.
+            -->
+            <div id="rawAudioStats" class="raw-audio-stats" style="display:none;">
+              <span class="raw-audio-stats__label">Translated audio (raw):</span>
+              <span id="rawAudioStatsValue" class="raw-audio-stats__value">
+                0 chunks · 0 KB · 0.0 s
+              </span>
+            </div>
+
             <!-- Live transcripts inside preview card -->
             <div id="previewTranscriptArea" class="preview-transcript-area" style="display:none;">
               <div class="preview-transcript-header">

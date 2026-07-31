@@ -6,7 +6,8 @@ import {
   updatePreviewStatus,
   updateKrispSDKStatus,
   showPreviewTranscriptArea,
-  handlePreviewTranscriptMessage,
+  handleTranscriptEvent,
+  handleTranslateEvent,
   clearPreviewTranscripts,
 } from "./ui";
 import {
@@ -40,7 +41,6 @@ elements.previewStartBtn.addEventListener("click", async () => {
     updatePreviewStatus("🎤 Requesting microphone access...");
     state.microphoneStream = await navigator.mediaDevices.getUserMedia({
       audio: {
-        echoCancellation: true,
         noiseSuppression: false,
         autoGainControl: true,
         sampleRate: 16000,
@@ -49,10 +49,38 @@ elements.previewStartBtn.addEventListener("click", async () => {
     });
     updatePreviewStatus("✅ Microphone ready");
 
+    // Reset and reveal the raw-chunk stats line. Updated below in onRawAudioChunk.
+    let rawAudioChunkCount = 0;
+    let rawAudioByteCount = 0;
+    elements.rawAudioStats.style.display = "flex";
+    elements.rawAudioStatsValue.textContent = "0 chunks · 0 KB · 0.0 s";
+
     state.krispSDK = new KrispVTSDK(getSdkConfig()).setHooks({
       onConnected: () => {
         updateKrispSDKStatus("connected");
         updatePreviewStatus("🔗 WebSocket connected to translation service");
+      },
+      // The SDK still drives playback via onProcessedAudio (below). This hook
+      // is purely observational here — useful for diagnostics, recording, or
+      // building a custom playback pipeline (combine with
+      // `disableInternalPlayback: true` in IKrispVTSDKConfig).
+      onRawAudioChunk: (buffer, info) => {
+        rawAudioChunkCount += 1;
+        rawAudioByteCount += buffer.byteLength;
+        const samples = buffer.byteLength / 2; // PCM16 = 2 bytes/sample
+        const seconds = samples / info.sampleRate;
+        const accumulatedSeconds =
+          rawAudioByteCount / 2 / info.sampleRate;
+        if (rawAudioChunkCount === 1) {
+          console.log(
+            `[PREVIEW] First translated audio chunk: ${buffer.byteLength} bytes ` +
+              `(${seconds.toFixed(3)}s @ ${info.sampleRate}Hz ${info.format})`
+          );
+        }
+        elements.rawAudioStatsValue.textContent =
+          `${rawAudioChunkCount} chunks · ` +
+          `${(rawAudioByteCount / 1024).toFixed(1)} KB · ` +
+          `${accumulatedSeconds.toFixed(1)} s`;
       },
       onProcessedAudio: async (stream) => {
         console.log("[PREVIEW] Received translated audio");
@@ -111,10 +139,8 @@ elements.previewStartBtn.addEventListener("click", async () => {
         updatePreviewStatus(`❌ Error: ${error.message}`);
         updateKrispSDKStatus("error");
       },
-      onMessage: (msg) => {
-        console.log("[PREVIEW] Krisp SDK message:", msg);
-        handlePreviewTranscriptMessage(msg);
-      },
+      onTranscript: handleTranscriptEvent,
+      onTranslate: handleTranslateEvent,
       onDisconnected: () => updateKrispSDKStatus("disconnected"),
     });
 
@@ -155,6 +181,7 @@ elements.previewStopBtn.addEventListener("click", async () => {
   updatePreviewStatus("⏹️ Stopping preview...");
   await cleanup();
   clearPreviewTranscripts();
+  elements.rawAudioStats.style.display = "none";
   state.isPreviewModeActive = false;
   updatePreviewStatus("Ready to test translation");
   elements.previewStartBtn.disabled = false;

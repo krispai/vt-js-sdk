@@ -19,7 +19,20 @@ export const WS_CONNECT_TIMEOUT_MS = 20000;
 /**
  * SDK version
  */
-export const SDK_VERSION = "1.0.4";
+export const SDK_VERSION = "1.1.1";
+
+/**
+ * Uplink sample rate, in Hz. The SDK converts every audio input — captured or
+ * pushed — to mono PCM16 at this rate before it reaches the WebSocket, and
+ * declares it in the ClientHello.
+ */
+export const CAPTURE_SAMPLE_RATE = 16000;
+
+/**
+ * Target duration of one uplink audio chunk, in milliseconds. Sole control over
+ * how often the SDK sends on the WebSocket while capturing.
+ */
+export const CAPTURE_CHUNK_MS = 80;
 
 /**
  * Vocabulary validation constraints
@@ -49,6 +62,15 @@ export const VT_MESSAGES = {
 
   // Input errors
   NO_AUDIO_TRACK: "VT Session: No audio track found in input stream",
+  INVALID_PCM_INPUT: "VT Session: sendAudio expects mono PCM16 or Float32 audio",
+  INPUT_MODE_CONFLICT:
+    "VT Session: a session uses either process() or sendAudio(), not both",
+
+  // Audio capture
+  AUDIO_WORKLET_UNAVAILABLE:
+    "VT Session: AudioWorklet unavailable – falling back to ScriptProcessorNode",
+  UNSUPPORTED_CAPTURE_RATE:
+    "VT Session: browser would not provide a 16 kHz capture AudioContext",
 
   // General
   FAILED_TO_STOP: "VT Session: Failed to stop",

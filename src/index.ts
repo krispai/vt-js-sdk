@@ -16,12 +16,15 @@ export type {
   IErrorPayload,
   IHooks,
   IRawAudioChunkInfo,
+  IVtTextEvent,
   IAudioOutputConfig,
   VtLanguageInfo,
   IKrispVTSDKConfig,
 } from "./types";
 
 export {
+  LANGUAGES_URL,
+  WS_BASE_URL,
   WS_CONNECT_TIMEOUT_MS,
   SDK_VERSION,
   VOCABULARY_WORD_MIN_LENGTH,

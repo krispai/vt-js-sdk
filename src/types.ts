@@ -171,6 +171,39 @@ export interface IRawAudioChunkInfo {
   channels: 1;
 }
 
+/**
+ * A parsed inbound text event — recognised speech (`onTranscript`) or its
+ * translation (`onTranslate`).
+ *
+ * Optional fields come from a server frame that may omit them: read the
+ * **value**, not the key.
+ */
+export interface IVtTextEvent {
+  /** Text exactly as the server sent it, untrimmed. Never empty. */
+  text: string;
+  /**
+   * `false` for an interim result that a later event supersedes, `true` for a
+   * completed utterance. Tolerates the legacy `is_final` wire spelling; a frame
+   * carrying neither is treated as final.
+   */
+  final: boolean;
+  /** Server-assigned id linking the transcript and translate events of one utterance. */
+  utteranceId?: string | undefined;
+  /**
+   * BCP 47 language tag of `text`. **Not emitted by the server today** — reserved
+   * for forward compatibility. The SDK never substitutes the `from` / `to` values
+   * passed to `start()`.
+   */
+  language?: string | undefined;
+  /**
+   * ISO 8601 start of the audio this event covers, verbatim from the server
+   * (e.g. `"2026-03-25T19:24:45.370+00:00"`). Transcript events only.
+   */
+  start?: string | undefined;
+  /** Duration of the covered audio in **milliseconds**. Transcript events only. */
+  durationMs?: number | undefined;
+}
+
 export interface IHooks {
   onReady?: () => void;
   onConnected?: () => void;
@@ -192,8 +225,25 @@ export interface IHooks {
   onRawAudioChunk?: (buffer: ArrayBuffer, info: IRawAudioChunkInfo) => void;
   onError?: (error: IErrorPayload) => void;
   /**
+   * Recognised speech in the source language, parsed and typed.
+   * Requires `IStartConfig.transcript.interim` and/or `.final`.
+   */
+  onTranscript?: (event: IVtTextEvent) => void;
+  /**
+   * Translated text in the target language, parsed and typed.
+   * Requires `IStartConfig.transcript.translate`. Fires after `onTranscript`
+   * when a single frame carries both.
+   */
+  onTranslate?: (event: IVtTextEvent) => void;
+  /**
    * Inbound WebSocket JSON after `JSON.parse` (excluding handled handshake / error frames).
    * Shape is server-defined; the SDK does not interpret transcript vs translate here.
+   *
+   * Fires for every such frame, before `onTranscript` / `onTranslate`.
+   *
+   * @deprecated Use `onTranscript` / `onTranslate` instead. Kept for backward
+   * compatibility and for frames the SDK does not model yet; will be removed in a
+   * future major version.
    */
   onMessage?: (payload: unknown) => void;
 }

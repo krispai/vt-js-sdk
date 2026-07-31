@@ -1,58 +1,6 @@
+import type { IVtTextEvent } from "@krisp.ai/krisp-vt-sdk";
 import { elements } from "./elements";
 
-// ── Demo-only: map raw `onMessage` payloads to transcript columns ─────────────
-
-type TranscriptLine = { text: string; isFinal: boolean; utteranceId?: string };
-type TranscriptParts = { original?: TranscriptLine; translated?: TranscriptLine };
-
-function nonEmptyString(v: unknown): v is string {
-  return typeof v === "string" && v.trim().length > 0;
-}
-
-function isFinalFlag(obj: Record<string, unknown>): boolean {
-  const v = obj["final"] ?? obj["is_final"];
-  return v !== false;
-}
-
-function parseTranscriptPayload(msg: Record<string, unknown>): TranscriptParts {
-  const out: TranscriptParts = {};
-
-  if (msg["transcript"] && typeof msg["transcript"] === "object") {
-    const t = msg["transcript"] as Record<string, unknown>;
-    const text = t["text"] as string;
-    if (nonEmptyString(text)) {
-      const uid = t["utterance_id"];
-      out.original = {
-        text,
-        isFinal: isFinalFlag(t),
-        utteranceId: typeof uid === "string" ? uid : undefined,
-      };
-    }
-  }
-
-  if (msg["translate"] && typeof msg["translate"] === "object") {
-    const tr = msg["translate"] as Record<string, unknown>;
-    const text = tr["text"] as string;
-    if (nonEmptyString(text)) {
-      const uid = tr["utterance_id"];
-      out.translated = {
-        text,
-        isFinal: isFinalFlag(tr),
-        utteranceId: typeof uid === "string" ? uid : undefined,
-      };
-    }
-  }
-
-  if (!out.original && !out.translated) {
-    const isFinal = isFinalFlag(msg);
-    const oText = (msg["source_text"] ?? msg["original_text"]) as unknown;
-    const trText = (msg["target_text"] ?? msg["translated_text"] ?? msg["translation"]) as unknown;
-    if (nonEmptyString(oText)) out.original = { text: oText, isFinal };
-    if (nonEmptyString(trText)) out.translated = { text: trText, isFinal };
-  }
-
-  return out;
-}
 
 // ── Shared utterance-pair controller ─────────────────────────────────────────
 
@@ -115,34 +63,19 @@ function createUtterancePairController(
       seen.clear();
     },
     apply(
-      parts: TranscriptParts,
+      side: "original" | "translated",
+      event: IVtTextEvent,
       legacy: (type: "original" | "translated", text: string, isFinal: boolean) => void
     ) {
-      const o = parts.original;
-      const t = parts.translated;
-      const oId = o?.utteranceId?.trim() ?? "";
-      const tId = t?.utteranceId?.trim() ?? "";
+      const id = event.utteranceId?.trim() ?? "";
 
-      if (oId || tId) {
-        if (oId && tId && oId !== tId) {
-          if (o) {
-            ensurePair(oId);
-            updateUtteranceCell(originalList, translatedList, "original", oId, o.text, o.isFinal);
-          }
-          if (t) {
-            ensurePair(tId);
-            updateUtteranceCell(originalList, translatedList, "translated", tId, t.text, t.isFinal);
-          }
-        } else {
-          const id = oId || tId;
-          ensurePair(id);
-          if (o) updateUtteranceCell(originalList, translatedList, "original", id, o.text, o.isFinal);
-          if (t) updateUtteranceCell(originalList, translatedList, "translated", id, t.text, t.isFinal);
-        }
+      if (id) {
+        ensurePair(id);
+        updateUtteranceCell(originalList, translatedList, side, id, event.text, event.final);
       } else {
-        if (o) legacy("original", o.text, o.isFinal);
-        if (t) legacy("translated", t.text, t.isFinal);
+        legacy(side, event.text, event.final);
       }
+
       originalList.scrollTop = originalList.scrollHeight;
       translatedList.scrollTop = translatedList.scrollHeight;
     },
@@ -193,9 +126,12 @@ export function addPreviewTranscript(type: "original" | "translated", text: stri
   container.scrollTop = container.scrollHeight;
 }
 
-export function handlePreviewTranscriptMessage(payload: unknown) {
-  if (!payload || typeof payload !== "object") return;
-  previewTranscriptRows.apply(parseTranscriptPayload(payload as Record<string, unknown>), addPreviewTranscript);
+export function handleTranscriptEvent(event: IVtTextEvent) {
+  previewTranscriptRows.apply("original", event, addPreviewTranscript);
+}
+
+export function handleTranslateEvent(event: IVtTextEvent) {
+  previewTranscriptRows.apply("translated", event, addPreviewTranscript);
 }
 
 elements.clearPreviewTranscriptsBtn.addEventListener("click", () => {

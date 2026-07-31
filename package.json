@@ -1,6 +1,6 @@
 {
   "name": "@krisp.ai/krisp-vt-sdk",
-  "version": "1.0.4",
+  "version": "1.1.1",
   "description": "Krisp Voice Translation SDK — real-time speech-to-speech translation for the browser.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,7 +13,9 @@
   "scripts": {
     "build": "esbuild ./src/index.ts --bundle --format=esm --platform=browser --outfile=dist/index.js && tsc --emitDeclarationOnly",
     "prepublishOnly": "npm run build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "krisp",
@@ -51,8 +53,10 @@
     "registry": "https://registry.npmjs.org"
   },
   "devDependencies": {
-    "esbuild": "^0.25.11",
-    "typescript": "^5.9.3"
+    "@vitest/coverage-v8": "^4.1.10",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
   },
   "dependencies": {}
 }
