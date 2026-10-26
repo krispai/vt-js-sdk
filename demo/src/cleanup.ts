@@ -26,6 +26,11 @@ export async function cleanup() {
       state.mixerDestination = null;
     }
 
+    if (state.opusStop) {
+      await state.opusStop();
+      state.opusStop = null;
+    }
+
     if (state.krispSDK) {
       await state.krispSDK.stop();
       state.krispSDK = null;

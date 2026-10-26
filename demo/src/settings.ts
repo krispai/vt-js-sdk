@@ -1,4 +1,5 @@
 import { elements } from "./elements";
+import { isOpusSupported } from "./opus-io";
 
 window.addEventListener("load", async () => {
   const savedApiKey = localStorage.getItem("krispApiKey");
@@ -8,6 +9,19 @@ window.addEventListener("load", async () => {
 
   const savedGender = localStorage.getItem("voice");
   if (savedGender) elements.voice.value = savedGender;
+
+  if (!isOpusSupported()) {
+    const opusOption = elements.audioFormat.querySelector<HTMLOptionElement>(
+      'option[value="opus"]'
+    );
+    if (opusOption) {
+      opusOption.disabled = true;
+      opusOption.textContent = "Opus — unavailable (browser lacks WebCodecs audio)";
+    }
+  } else {
+    const savedFormat = localStorage.getItem("audioFormat");
+    if (savedFormat) elements.audioFormat.value = savedFormat;
+  }
 
   const savedOriginalGain = localStorage.getItem("originalGain");
   if (savedOriginalGain) {
@@ -32,4 +46,8 @@ elements.toLang.addEventListener("change", () => {
 
 elements.voice.addEventListener("change", () => {
   localStorage.setItem("voice", elements.voice.value);
+});
+
+elements.audioFormat.addEventListener("change", () => {
+  localStorage.setItem("audioFormat", elements.audioFormat.value);
 });

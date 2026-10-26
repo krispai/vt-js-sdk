@@ -884,7 +884,8 @@ The demo includes:
 - Live transcript panel (original + translated, inline in the preview card)
 - Transcript subscription controls (interim / final / translated)
 - Background voice cancellation toggle
-- **Live raw-audio counter** — fed by `IHooks.onRawAudioChunk`, demonstrates that advanced consumers can tap the raw PCM16 stream while the SDK still drives playback
+- **Audio format selector** — `PCM16` (the SDK captures and plays audio) or `Opus` (`audio: { format: 'opus' }`). The SDK does not ship an Opus codec, so in Opus mode the demo encodes the microphone and decodes the translation itself with WebCodecs (`AudioEncoder` / `AudioDecoder`, 16 kHz mono, 20 ms packets) — see [`demo/src/opus-io.ts`](demo/src/opus-io.ts) for a reference implementation. Requires a browser with WebCodecs audio support (Chrome / Edge); the option is disabled elsewhere.
+- **Live raw-audio counter** — fed by `IHooks.onRawAudioChunk`, demonstrates that advanced consumers can tap the raw stream (PCM16 or Opus packets) while the SDK still drives playback in PCM mode
 
 ---
 

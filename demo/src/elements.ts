@@ -4,6 +4,7 @@ export interface IElements {
   fromLang: HTMLSelectElement;
   toLang: HTMLSelectElement;
   voice: HTMLSelectElement;
+  audioFormat: HTMLSelectElement;
   originalGain: HTMLInputElement;
   translatedGain: HTMLInputElement;
   originalGainValue: HTMLSpanElement;
@@ -37,6 +38,7 @@ export const elements: IElements = {
   fromLang: document.getElementById("fromLang") as HTMLSelectElement,
   toLang: document.getElementById("toLang") as HTMLSelectElement,
   voice: document.getElementById("voice") as HTMLSelectElement,
+  audioFormat: document.getElementById("audioFormat") as HTMLSelectElement,
   originalGain: document.getElementById("originalGain") as HTMLInputElement,
   translatedGain: document.getElementById("translatedGain") as HTMLInputElement,
   originalGainValue: document.getElementById("originalGainValue") as HTMLSpanElement,
