@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { floatToPcm16 } from "../src/pcm";
+import { resampleToCaptureRate } from "../src/audio-codec";
 
 describe("floatToPcm16", () => {
   it("maps the full float range onto the full int16 range", () => {
@@ -36,5 +37,24 @@ describe("floatToPcm16", () => {
     for (let i = 0; i < input.length; i++) {
       expect(Math.abs(out[i]! / 32768 - input[i]!)).toBeLessThan(2 / 32768);
     }
+  });
+});
+
+describe("resampleToCaptureRate", () => {
+  it("returns 16 kHz input untouched", () => {
+    const input = new Float32Array([0.1, 0.2]);
+    expect(resampleToCaptureRate(input, 16000)).toBe(input);
+  });
+
+  it("averages groups of three when going 48 kHz → 16 kHz", () => {
+    const out = resampleToCaptureRate(
+      new Float32Array([0.3, 0.6, 0.9, -0.3, -0.6, -0.9]),
+      48000
+    );
+    expect(Array.from(out).map((v) => Math.round(v * 10) / 10)).toEqual([0.6, -0.6]);
+  });
+
+  it("yields a third as many samples", () => {
+    expect(resampleToCaptureRate(new Float32Array(960), 48000)).toHaveLength(320);
   });
 });

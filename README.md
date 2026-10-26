@@ -7,7 +7,7 @@ Real-time voice translation SDK powered by Krisp AI. Streams PCM16 audio over a 
 
 ## Features
 
-- Real-time speech translation over a raw WebSocket (PCM16 @ 16 kHz)
+- Real-time speech translation over a raw WebSocket (PCM16 @ 16 kHz by default, or Opus via `audio: { format: 'opus' }` — the SDK handles the encoding either way)
 - **Click-free playback out of the box** — translated audio is delivered as a ready-to-play `MediaStream`. Just `audio.srcObject = stream`. No extra `AudioContext`, mixer, or jitter-buffer code on your side. ([details](#audio-output--jitter-buffer))
 - **Raw PCM access** for advanced consumers (recording, custom mixing, native playback) via the `onRawAudioChunk` hook
 - Source and translated transcript events (interim and final)
@@ -217,7 +217,7 @@ Register event callbacks. Chainable.
 | `onConnected` | `() => void` | Same event as `onReady` — fired when the connection is fully established |
 | `onDisconnected` | `() => void` | WebSocket closed (clean or unexpected) |
 | `onProcessedAudio` | `(stream: MediaStream) => void` | Synthesised translated audio stream ready for playback or publishing. Not emitted when `disableInternalPlayback: true`. |
-| `onRawAudioChunk` | `(buffer: ArrayBuffer, info: { sampleRate: 16000; format: "pcm_s16le"; channels: 1 }) => void` | Raw translated PCM16 chunk as it arrives. Always emitted. Useful for recording, custom mixing, native playback, or diagnostics. The `buffer` is a fresh copy you may transfer / detach. |
+| `onRawAudioChunk` | `(buffer: ArrayBuffer, info: { sampleRate: 16000; format: "pcm_s16le"; channels: 1 }) => void` | Raw translated PCM16 chunk as it arrives — already decoded when the session uses `audio: { format: 'opus' }`, so the chunk is always PCM16. Always emitted. Useful for recording, custom mixing, native playback, or diagnostics. The `buffer` is a fresh copy you may transfer / detach. |
 | `onTranscript` | `(event: IVtTextEvent) => void` | Recognised speech in the source language, parsed and typed. Requires `transcript.interim` and/or `transcript.final`. |
 | `onTranslate` | `(event: IVtTextEvent) => void` | Translated text in the target language, parsed and typed. Requires `transcript.translate`. |
 | `onError` | `(error: IErrorPayload) => void` | SDK or server error |
@@ -250,6 +250,7 @@ interface IStartConfig {
   from: string;                           // Source language — BCP 47 (e.g. 'en-US')
   to: string;                             // Target language — BCP 47 (e.g. 'fr-FR')
   voice?: 'male' | 'female';              // Voice (default: 'male')
+  audio?: IVtAudioConfig;                 // Audio options, e.g. { format: 'opus', sample_rate: 16000 }
   vocabulary?: string[];                  // Domain-specific words for improved STT accuracy
   dictionary?: Record<string, string>;    // Explicit word-to-word translations
   transcript?: IVtTranscriptSubscribeConfig;  // Which text events to receive
@@ -257,6 +258,39 @@ interface IStartConfig {
   metadata?: object;                      // Optional metadata sent to the server
 }
 ```
+
+#### `audio` — `IVtAudioConfig`
+
+Audio options for the session. When the block is omitted, the session runs on PCM16 @ 16 kHz and nothing changes.
+
+```typescript
+interface IVtAudioConfig {
+  format?: 'pcm_s16le' | 'opus';   // default: 'pcm_s16le'
+  sample_rate?: number;            // default: 16000 — the only supported value
+}
+```
+
+`format` is the audio format used **on the WebSocket**, in both directions:
+
+| Value | Meaning |
+|-------|---------|
+| `'pcm_s16le'` (default) | Raw mono PCM16 @ 16 kHz on the wire. |
+| `'opus'` | Opus packets (20 ms each) on the wire. Lower bandwidth. |
+
+The format is handled entirely inside the SDK, so **your code does not change between formats**: `process()` and `sendAudio()` take PCM, `onProcessedAudio` plays the translation, and `onRawAudioChunk` delivers decoded PCM16 (`info.format` is always `'pcm_s16le'`). Pick `'opus'` and the SDK encodes the uplink and decodes the downlink for you.
+
+Opus uses the browser's WebCodecs audio API (`AudioEncoder` / `AudioDecoder`), available in Chromium-based browsers and recent Safari. Where it is missing, `start()` rejects with `InvalidSessionConfigurations` before opening the WebSocket. Use `isAudioFormatSupported('opus')` to check ahead of time:
+
+```javascript
+import { isAudioFormatSupported } from '@krisp.ai/krisp-vt-sdk';
+
+const format = isAudioFormatSupported('opus') ? 'opus' : 'pcm_s16le';
+await sdk.start({ from: 'en-US', to: 'es-ES', audio: { format } });
+```
+
+Passing any other `format` makes `start()` reject with `ValidationErrorClient`.
+
+`sample_rate` is declared in the ClientHello; the service (and the SDK's capture / playback paths) currently support only `16000`, so any other value makes `start()` reject with `ValidationErrorClient`. Channel count is fixed to mono.
 
 #### `transcript` — `IVtTranscriptSubscribeConfig`
 
@@ -332,11 +366,11 @@ Capture opens its `AudioContext` at 16 kHz and lets the browser do the rate conv
 
 ### `sendAudio(pcm: ArrayBuffer | Int16Array | Float32Array): void`
 
-Push raw PCM you captured or routed yourself, instead of handing the SDK a `MediaStream`.
+Push audio you captured or routed yourself, instead of handing the SDK a `MediaStream`.
 
 Use this when the audio does not come from a `MediaStream` the SDK can tap — a WebRTC track you already process, a decoded file, a native bridge, or your own `AudioWorklet`.
 
-Audio must be **mono at 16 kHz**:
+Audio must be **mono at 16 kHz**, and is always PCM — also when the session uses `audio: { format: 'opus' }`, where the SDK encodes it for you. Accepted forms:
 
 | Input | Meaning |
 |-------|---------|
@@ -726,7 +760,9 @@ KrispVTSDK (Main Orchestrator)
 ├── LoggingService              Structured logging with state tracking
 ├── ErrorHandlingService        Maps errors to VtErrorType, fires onError hook
 ├── TranslationAPIService       REST client — languages endpoint only
-├── WebSocketTransportService   Raw WebSocket: ClientHello, PCM16 audio, JSON events
+├── WebSocketTransportService   Raw WebSocket: ClientHello, wire audio, JSON events
+├── AudioCodec                  Wire format ⇄ PCM16: pass-through for pcm_s16le,
+│                               WebCodecs encoder / decoder for opus
 ├── AudioCaptureService         MediaStream → 16 kHz context → PCM16 chunks
 │                               (renders on an AudioWorklet, ScriptProcessorNode fallback)
 └── AudioOutputService          PCM16 chunks → jitter-buffered queue → MediaStream
@@ -742,6 +778,7 @@ KrispVTSDK (Main Orchestrator)
 | `src/types.ts` | All TypeScript interfaces and enums |
 | `src/constants.ts` | API endpoints, timeout, vocabulary constraints, message templates |
 | `src/KrispVTSDK.ts` | Main orchestrator |
+| `src/audio-codec.ts` | Wire-format codecs (`pcm_s16le` pass-through, `opus` via WebCodecs) |
 | `src/websocket-transport.ts` | WebSocket transport, ClientHello builder, message router |
 | `src/translation-api.ts` | REST languages endpoint |
 | `src/audio-capture.ts` | Microphone capture and PCM16 conversion |
@@ -854,7 +891,8 @@ The demo includes:
 - Live transcript panel (original + translated, inline in the preview card)
 - Transcript subscription controls (interim / final / translated)
 - Background voice cancellation toggle
-- **Live raw-audio counter** — fed by `IHooks.onRawAudioChunk`, demonstrates that advanced consumers can tap the raw PCM16 stream while the SDK still drives playback
+- **Audio format selector** — `PCM16` or `Opus` (`audio: { format }`). The demo code is identical for both; the SDK does the encoding. The Opus option is disabled in browsers without WebCodecs audio support.
+- **Live raw-audio counter** — fed by `IHooks.onRawAudioChunk`, demonstrates that advanced consumers can tap the raw PCM16 stream while the SDK still drives playback (the chunks are PCM16 even when the wire format is Opus)
 
 ---
 

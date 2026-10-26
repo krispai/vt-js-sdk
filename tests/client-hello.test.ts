@@ -34,11 +34,27 @@ describe("ClientHello: metadata", () => {
 });
 
 describe("ClientHello: audio block", () => {
-  it("declares mono PCM16 at the uplink sample rate", async () => {
+  it("declares mono PCM16 at the uplink sample rate by default", async () => {
     const cfg = await helloConfig();
     expect(cfg["audio"]).toEqual({
       format: "pcm_s16le",
       sample_rate: CAPTURE_SAMPLE_RATE,
+    });
+  });
+
+  it("forwards the requested audio format", async () => {
+    const cfg = await helloConfig({ audio: { format: "opus" } });
+    expect(cfg["audio"]).toEqual({
+      format: "opus",
+      sample_rate: CAPTURE_SAMPLE_RATE,
+    });
+  });
+
+  it("forwards an explicit sample_rate", async () => {
+    const cfg = await helloConfig({ audio: { sample_rate: 16000 } });
+    expect(cfg["audio"]).toEqual({
+      format: "pcm_s16le",
+      sample_rate: 16000,
     });
   });
 

@@ -65,6 +65,20 @@
         <div class="section">
           <div class="section-title">
             <span class="badge badge-krisp-sdk">Translation</span>
+            Audio Options
+          </div>
+          <div class="input-group">
+            <label for="audioFormat">Audio Format</label>
+            <select id="audioFormat" class="select-input">
+              <option value="pcm_s16le" selected>PCM16 (pcm_s16le)</option>
+              <option value="opus">Opus (the SDK encodes / decodes it)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span class="badge badge-krisp-sdk">Translation</span>
             Transcript Options
           </div>
           <div class="transcript-options-grid">
@@ -176,7 +190,8 @@
             <!--
               Live stats sourced from the SDK's onRawAudioChunk hook.
               Demonstrates that advanced consumers can tap the raw PCM16
-              stream while the SDK still drives MediaStream playback.
+              stream while the SDK still drives MediaStream playback. The
+              chunks are PCM16 even when the wire format is Opus.
             -->
             <div id="rawAudioStats" class="raw-audio-stats" style="display:none;">
               <span class="raw-audio-stats__label">Translated audio (raw):</span>

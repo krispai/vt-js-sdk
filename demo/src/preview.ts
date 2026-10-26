@@ -1,4 +1,4 @@
-import { KrispVTSDK } from "@krisp.ai/krisp-vt-sdk";
+import { KrispVTSDK, type VtAudioFormat } from "@krisp.ai/krisp-vt-sdk";
 import { elements } from "./elements";
 import { state } from "./state";
 import {
@@ -33,6 +33,7 @@ elements.previewStartBtn.addEventListener("click", async () => {
     const fromLang = elements.fromLang.value;
     const toLang = elements.toLang.value;
     const voice = elements.voice.value;
+    const audioFormat = elements.audioFormat.value as VtAudioFormat;
 
     state.isPreviewModeActive = true;
     elements.previewStartBtn.disabled = true;
@@ -109,7 +110,7 @@ elements.previewStartBtn.addEventListener("click", async () => {
         try {
           await state.previewAudioElement.play();
           updatePreviewStatus(
-            `🎧 Active: ${fromLang} → ${toLang} (${voice} voice)`
+            `🎧 Active: ${fromLang} → ${toLang} (${voice} voice, ${audioFormat})`
           );
         } catch (error) {
           updatePreviewStatus("⚠️ Click anywhere to enable audio playback");
@@ -123,7 +124,7 @@ elements.previewStartBtn.addEventListener("click", async () => {
             try {
               await previewAudio.play();
               updatePreviewStatus(
-                `🎧 Active: ${fromLang} → ${toLang} (${voice} voice)`
+                `🎧 Active: ${fromLang} → ${toLang} (${voice} voice, ${audioFormat})`
               );
               console.log("[PREVIEW] Audio enabled after user interaction");
               document.removeEventListener("click", enableAudio);
@@ -149,6 +150,7 @@ elements.previewStartBtn.addEventListener("click", async () => {
       to: toLang,
       from: fromLang,
       voice: voice as "male" | "female",
+      audio: { format: audioFormat, sample_rate: 16000 },
       vocabulary: vocabConfig.vocabulary,
       dictionary: vocabConfig.dictionary,
       features: {
@@ -163,7 +165,7 @@ elements.previewStartBtn.addEventListener("click", async () => {
 
     showPreviewTranscriptArea(fromLang, toLang);
 
-    updatePreviewStatus("🔄 Starting PCM16 audio capture...");
+    updatePreviewStatus(`🔄 Starting audio capture (${audioFormat} on the wire)...`);
     await state.krispSDK.process(state.microphoneStream!);
 
     updatePreviewStatus(`🎤 Speak now to hear translation (streaming via WebSocket)`);

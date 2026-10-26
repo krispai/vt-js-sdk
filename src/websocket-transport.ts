@@ -142,7 +142,10 @@ export class WebSocketTransportService {
       ...(config.transcript ?? transcriptOn),
     };
     const cfg: Record<string, unknown> = {
-      audio: { format: "pcm_s16le", sample_rate: CAPTURE_SAMPLE_RATE },
+      audio: {
+        format: config.audio?.format ?? "pcm_s16le",
+        sample_rate: config.audio?.sample_rate ?? CAPTURE_SAMPLE_RATE,
+      },
       source_language: config.from,
       target_language: config.to,
       voice: config.voice ?? "male",
