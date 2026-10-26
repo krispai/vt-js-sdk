@@ -36,7 +36,7 @@ npm i @krisp.ai/krisp-vt-sdk
 ```json
 {
   "dependencies": {
-    "@krisp.ai/krisp-vt-sdk": "^1.1.1"
+    "@krisp.ai/krisp-vt-sdk": "^1.1.2"
   }
 }
 ```
