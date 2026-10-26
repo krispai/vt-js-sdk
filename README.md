@@ -7,7 +7,7 @@ Real-time voice translation SDK powered by Krisp AI. Streams PCM16 audio over a 
 
 ## Features
 
-- Real-time speech translation over a raw WebSocket (PCM16 @ 16 kHz)
+- Real-time speech translation over a raw WebSocket (PCM16 @ 16 kHz by default, or Opus pass-through via `audio: { format: 'opus' }`)
 - **Click-free playback out of the box** — translated audio is delivered as a ready-to-play `MediaStream`. Just `audio.srcObject = stream`. No extra `AudioContext`, mixer, or jitter-buffer code on your side. ([details](#audio-output--jitter-buffer))
 - **Raw PCM access** for advanced consumers (recording, custom mixing, native playback) via the `onRawAudioChunk` hook
 - Source and translated transcript events (interim and final)
@@ -216,8 +216,8 @@ Register event callbacks. Chainable.
 | `onReady` | `() => void` | WebSocket accepted the ClientHello and is ready to stream |
 | `onConnected` | `() => void` | Same event as `onReady` — fired when the connection is fully established |
 | `onDisconnected` | `() => void` | WebSocket closed (clean or unexpected) |
-| `onProcessedAudio` | `(stream: MediaStream) => void` | Synthesised translated audio stream ready for playback or publishing. Not emitted when `disableInternalPlayback: true`. |
-| `onRawAudioChunk` | `(buffer: ArrayBuffer, info: { sampleRate: 16000; format: "pcm_s16le"; channels: 1 }) => void` | Raw translated PCM16 chunk as it arrives. Always emitted. Useful for recording, custom mixing, native playback, or diagnostics. The `buffer` is a fresh copy you may transfer / detach. |
+| `onProcessedAudio` | `(stream: MediaStream) => void` | Synthesised translated audio stream ready for playback or publishing. Not emitted when `disableInternalPlayback: true` or when the session uses `audio: { format: 'opus' }`. |
+| `onRawAudioChunk` | `(buffer: ArrayBuffer, info: { sampleRate: 16000; format: "pcm_s16le" \| "opus"; channels: 1 }) => void` | Raw translated audio chunk as it arrives — PCM16 by default, an Opus packet when the session uses `audio: { format: 'opus' }` (`info.format` tells you which). Always emitted. Useful for recording, custom mixing, native playback, or diagnostics. The `buffer` is a fresh copy you may transfer / detach. |
 | `onTranscript` | `(event: IVtTextEvent) => void` | Recognised speech in the source language, parsed and typed. Requires `transcript.interim` and/or `transcript.final`. |
 | `onTranslate` | `(event: IVtTextEvent) => void` | Translated text in the target language, parsed and typed. Requires `transcript.translate`. |
 | `onError` | `(error: IErrorPayload) => void` | SDK or server error |
@@ -250,6 +250,7 @@ interface IStartConfig {
   from: string;                           // Source language — BCP 47 (e.g. 'en-US')
   to: string;                             // Target language — BCP 47 (e.g. 'fr-FR')
   voice?: 'male' | 'female';              // Voice (default: 'male')
+  audio?: IVtAudioConfig;                 // Audio options, e.g. { format: 'opus', sample_rate: 16000 }
   vocabulary?: string[];                  // Domain-specific words for improved STT accuracy
   dictionary?: Record<string, string>;    // Explicit word-to-word translations
   transcript?: IVtTranscriptSubscribeConfig;  // Which text events to receive
@@ -257,6 +258,33 @@ interface IStartConfig {
   metadata?: object;                      // Optional metadata sent to the server
 }
 ```
+
+#### `audio` — `IVtAudioConfig`
+
+Audio options for the session. When the block is omitted, the session runs on PCM16 @ 16 kHz and nothing changes.
+
+```typescript
+interface IVtAudioConfig {
+  format?: 'pcm_s16le' | 'opus';   // default: 'pcm_s16le'
+  sample_rate?: number;            // default: 16000 — the only supported value
+}
+```
+
+`format` is the audio format used on the WebSocket, in **both** directions.
+
+`sample_rate` is declared in the ClientHello; the service (and the SDK's capture / playback paths) currently support only `16000`, so any other value makes `start()` reject with `ValidationErrorClient`. Channel count is fixed to mono.
+
+| Value | Meaning |
+|-------|---------|
+| `'pcm_s16le'` (default) | Raw mono PCM16 @ 16 kHz. All SDK features available. |
+| `'opus'` | Opus packets in both directions. For advanced consumers that bring their own codec. |
+
+The SDK does **not** encode or decode Opus itself, so an `'opus'` session is push/pull only:
+
+- **Uplink** — `process()` is unavailable (it captures PCM only) and is rejected with `InvalidSessionConfigurations`. Push one encoded Opus packet per `sendAudio()` call instead.
+- **Downlink** — internal playback is disabled (`onProcessedAudio` never fires). Consume translated packets via `onRawAudioChunk`, whose `info.format` is `'opus'`.
+
+Passing any other value makes `start()` reject with `ValidationErrorClient` before opening the WebSocket.
 
 #### `transcript` — `IVtTranscriptSubscribeConfig`
 
@@ -330,19 +358,21 @@ Capture opens its `AudioContext` at 16 kHz and lets the browser do the rate conv
 
 ---
 
-### `sendAudio(pcm: ArrayBuffer | Int16Array | Float32Array): void`
+### `sendAudio(audio: ArrayBuffer | Int16Array | Float32Array | Uint8Array): void`
 
-Push raw PCM you captured or routed yourself, instead of handing the SDK a `MediaStream`.
+Push audio you captured or routed yourself, instead of handing the SDK a `MediaStream`.
 
 Use this when the audio does not come from a `MediaStream` the SDK can tap — a WebRTC track you already process, a decoded file, a native bridge, or your own `AudioWorklet`.
 
-Audio must be **mono at 16 kHz**:
+Audio must be **mono at 16 kHz**. With the default `'pcm_s16le'` format the accepted forms are:
 
 | Input | Meaning |
 |-------|---------|
 | `ArrayBuffer` | PCM16 little-endian. Byte length must be even. |
 | `Int16Array` | PCM16. Views with a non-zero `byteOffset` are handled correctly. |
 | `Float32Array` | Normalised samples in `[-1, 1]`. |
+
+With `audio: { format: 'opus' }` each call carries **one encoded Opus packet**, as an `ArrayBuffer` or `Uint8Array` (views are copied so only their own bytes are sent). PCM-shaped typed arrays are rejected through `onError`.
 
 If your audio is at another sample rate, hand the SDK a `MediaStream` through `process()` instead and it will convert for you.
 

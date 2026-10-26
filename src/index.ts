@@ -10,6 +10,8 @@ export { LogLevel, VtErrorType, VtEventType } from "./types";
 export type {
   ISDKStates,
   IStartConfig,
+  VtAudioFormat,
+  IVtAudioConfig,
   IVtTranscriptSubscribeConfig,
   IVtFeatures,
   ICustomError,

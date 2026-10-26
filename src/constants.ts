@@ -63,6 +63,14 @@ export const VT_MESSAGES = {
   // Input errors
   NO_AUDIO_TRACK: "VT Session: No audio track found in input stream",
   INVALID_PCM_INPUT: "VT Session: sendAudio expects mono PCM16 or Float32 audio",
+  INVALID_OPUS_INPUT:
+    "VT Session: sendAudio expects Opus packets (ArrayBuffer or Uint8Array) when format is 'opus'",
+  INVALID_FORMAT:
+    "VT Session: Invalid audio format – allowed values are 'pcm_s16le' and 'opus'",
+  INVALID_SAMPLE_RATE:
+    "VT Session: Invalid sample_rate – only 16000 is supported",
+  OPUS_PROCESS_UNSUPPORTED:
+    "VT Session: process() captures PCM only – with format 'opus', push encoded packets via sendAudio()",
   INPUT_MODE_CONFLICT:
     "VT Session: a session uses either process() or sendAudio(), not both",
 

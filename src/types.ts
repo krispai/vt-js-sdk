@@ -20,6 +20,30 @@ export interface VtLanguageInfo {
   name: string;
 }
 
+/**
+ * Audio format used on the WebSocket, in both directions.
+ * - `"pcm_s16le"` (default) — raw mono PCM16 @ 16 kHz.
+ * - `"opus"` — Opus packets. The SDK does not encode or decode Opus itself:
+ *   push encoded packets with `sendAudio()` and consume translated packets via
+ *   `IHooks.onRawAudioChunk`. `process()` and internal playback are unavailable.
+ */
+export type VtAudioFormat = "pcm_s16le" | "opus";
+
+/**
+ * ClientHello `audio` block — audio options for the session.
+ * Channel count is fixed to mono by the service.
+ */
+export interface IVtAudioConfig {
+  /** Audio format. Defaults to `"pcm_s16le"` when omitted. */
+  format?: VtAudioFormat;
+  /**
+   * Sample rate in Hz. The service currently supports only `16000`, so any
+   * other value makes `start()` reject with `ValidationErrorClient`.
+   * Defaults to `16000` when omitted.
+   */
+  sample_rate?: number;
+}
+
 /** ClientHello `transcript` block — controls interim / final / translated text events from the server. */
 export interface IVtTranscriptSubscribeConfig {
   interim?: boolean;
@@ -37,6 +61,13 @@ export interface IStartConfig {
   from: string;
   to: string;
   voice?: "male" | "female";
+  /**
+   * Audio options for the session, declared in the ClientHello and applied to
+   * both uplink and downlink audio. When omitted, the session runs on
+   * `"pcm_s16le"`. See {@link VtAudioFormat} for what `"opus"` implies for
+   * the SDK.
+   */
+  audio?: IVtAudioConfig;
   /** Custom vocabulary words for improved STT and translation accuracy */
   vocabulary?: string[];
   /** Custom word-to-word translations (source → target) */
@@ -167,7 +198,8 @@ export interface IErrorHandler {
 /** Format descriptor passed to onRawAudioChunk so consumers don't need to hardcode it. */
 export interface IRawAudioChunkInfo {
   sampleRate: 16000;
-  format: "pcm_s16le";
+  /** Matches the `format` the session was started with. */
+  format: VtAudioFormat;
   channels: 1;
 }
 
@@ -215,10 +247,11 @@ export interface IHooks {
    */
   onProcessedAudio?: (stream: MediaStream) => void;
   /**
-   * Raw translated PCM16 chunk as it arrives from the server. Useful if you
-   * want to do your own playback, mixing, or recording. Always emitted (even
-   * when internal playback is enabled) so advanced consumers can tap into the
-   * raw stream.
+   * Raw translated audio chunk as it arrives from the server — PCM16 by
+   * default, or an Opus packet when the session was started with
+   * `format: "opus"` (check `info.format`). Useful if you want to do your
+   * own playback, mixing, or recording. Always emitted (even when internal
+   * playback is enabled) so advanced consumers can tap into the raw stream.
    *
    * `buffer` is a fresh `ArrayBuffer` you may consume / transfer.
    */
