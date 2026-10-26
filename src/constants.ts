@@ -19,7 +19,7 @@ export const WS_CONNECT_TIMEOUT_MS = 20000;
 /**
  * SDK version
  */
-export const SDK_VERSION = "1.1.1";
+export const SDK_VERSION = "1.1.2";
 
 /**
  * Uplink sample rate, in Hz. The SDK converts every audio input — captured or
