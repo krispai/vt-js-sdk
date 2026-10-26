@@ -23,9 +23,12 @@ export interface VtLanguageInfo {
 /**
  * Audio format used on the WebSocket, in both directions.
  * - `"pcm_s16le"` (default) — raw mono PCM16 @ 16 kHz.
- * - `"opus"` — Opus packets. The SDK does not encode or decode Opus itself:
- *   push encoded packets with `sendAudio()` and consume translated packets via
- *   `IHooks.onRawAudioChunk`. `process()` and internal playback are unavailable.
+ * - `"opus"` — Opus packets (20 ms). Needs the WebCodecs audio API in the
+ *   browser; `start()` rejects when it is missing.
+ *
+ * It only selects the wire encoding. The SDK's own API is PCM16 either way:
+ * `process()` and `sendAudio()` take PCM, and `onProcessedAudio` /
+ * `onRawAudioChunk` deliver decoded PCM.
  */
 export type VtAudioFormat = "pcm_s16le" | "opus";
 
@@ -64,8 +67,7 @@ export interface IStartConfig {
   /**
    * Audio options for the session, declared in the ClientHello and applied to
    * both uplink and downlink audio. When omitted, the session runs on
-   * `"pcm_s16le"`. See {@link VtAudioFormat} for what `"opus"` implies for
-   * the SDK.
+   * `"pcm_s16le"`. See {@link VtAudioFormat}.
    */
   audio?: IVtAudioConfig;
   /** Custom vocabulary words for improved STT and translation accuracy */
@@ -198,8 +200,8 @@ export interface IErrorHandler {
 /** Format descriptor passed to onRawAudioChunk so consumers don't need to hardcode it. */
 export interface IRawAudioChunkInfo {
   sampleRate: 16000;
-  /** Matches the `format` the session was started with. */
-  format: VtAudioFormat;
+  /** Chunks are always decoded PCM16, whatever `audio.format` the session uses. */
+  format: "pcm_s16le";
   channels: 1;
 }
 
@@ -247,11 +249,10 @@ export interface IHooks {
    */
   onProcessedAudio?: (stream: MediaStream) => void;
   /**
-   * Raw translated audio chunk as it arrives from the server — PCM16 by
-   * default, or an Opus packet when the session was started with
-   * `format: "opus"` (check `info.format`). Useful if you want to do your
-   * own playback, mixing, or recording. Always emitted (even when internal
-   * playback is enabled) so advanced consumers can tap into the raw stream.
+   * Raw translated PCM16 chunk, decoded if the session uses `audio.format:
+   * "opus"`. Useful if you want to do your own playback, mixing, or
+   * recording. Always emitted (even when internal playback is enabled) so
+   * advanced consumers can tap into the raw stream.
    *
    * `buffer` is a fresh `ArrayBuffer` you may consume / transfer.
    */

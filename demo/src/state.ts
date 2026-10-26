@@ -5,8 +5,6 @@ export const state = {
   microphoneStream: null as MediaStream | null,
   previewAudioElement: null as HTMLAudioElement | null,
   isPreviewModeActive: false,
-  /** Tears down the Opus encoder / decoder when the session uses `format: "opus"`. */
-  opusStop: null as (() => Promise<void>) | null,
 
   audioContext: null as AudioContext | null,
   originalGainNode: null as GainNode | null,

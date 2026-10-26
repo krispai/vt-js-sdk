@@ -1,5 +1,5 @@
+import { isAudioFormatSupported } from "@krisp.ai/krisp-vt-sdk";
 import { elements } from "./elements";
-import { isOpusSupported } from "./opus-io";
 
 window.addEventListener("load", async () => {
   const savedApiKey = localStorage.getItem("krispApiKey");
@@ -10,7 +10,7 @@ window.addEventListener("load", async () => {
   const savedGender = localStorage.getItem("voice");
   if (savedGender) elements.voice.value = savedGender;
 
-  if (!isOpusSupported()) {
+  if (!isAudioFormatSupported("opus")) {
     const opusOption = elements.audioFormat.querySelector<HTMLOptionElement>(
       'option[value="opus"]'
     );

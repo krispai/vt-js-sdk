@@ -1,4 +1,4 @@
-import type { IHooks, IStartConfig, ISDKStates, ICustomError, VtLanguageInfo, LogLevel, IKrispVTSDKConfig, VtAudioFormat, IRawAudioChunkInfo } from "./types";
+import type { IHooks, IStartConfig, ISDKStates, ICustomError, VtLanguageInfo, LogLevel, IKrispVTSDKConfig, VtAudioFormat } from "./types";
 import { ISDKStates as States, VtErrorType } from "./types";
 import { WS_CONNECT_TIMEOUT_MS, VT_MESSAGES, VOCABULARY_WORD_MIN_LENGTH, VOCABULARY_WORD_MAX_LENGTH, VOCABULARY_WORD_PATTERN, CAPTURE_SAMPLE_RATE } from "./constants";
 import { LoggingService } from "./logging";
@@ -8,31 +8,27 @@ import { AudioOutputService } from "./audio-output";
 import { AudioCaptureService } from "./audio-capture";
 import { WebSocketTransportService } from "./websocket-transport";
 import { floatToPcm16 } from "./pcm";
+import { createAudioCodec, isAudioFormatSupported, type IAudioCodec } from "./audio-codec";
 
 /**
  * Main Krisp VT SDK class – orchestrates all SDK functionality.
  *
  * Transport layer: raw WebSocket (PCM16 @ 16 kHz).
  */
-/** Format constants emitted with onRawAudioChunk – match the VT backend wire format. */
-const RAW_AUDIO_INFO: Readonly<Record<VtAudioFormat, IRawAudioChunkInfo>> =
-  Object.freeze({
-    pcm_s16le: Object.freeze({
-      sampleRate: 16000,
-      format: "pcm_s16le",
-      channels: 1,
-    } as const),
-    opus: Object.freeze({
-      sampleRate: 16000,
-      format: "opus",
-      channels: 1,
-    } as const),
-  });
+/**
+ * Descriptor emitted with onRawAudioChunk. Chunks are always decoded PCM16,
+ * whatever `audio.format` the session uses on the wire.
+ */
+const RAW_AUDIO_INFO = Object.freeze({
+  sampleRate: 16000,
+  format: "pcm_s16le",
+  channels: 1,
+} as const);
 
 const SUPPORTED_FORMATS: readonly VtAudioFormat[] = ["pcm_s16le", "opus"];
 
 function toUplinkPcm16(
-  pcm: ArrayBuffer | Int16Array | Float32Array | Uint8Array
+  pcm: ArrayBuffer | Int16Array | Float32Array
 ): ArrayBuffer | null {
   if (pcm instanceof Float32Array) {
     return floatToPcm16(pcm).buffer as ArrayBuffer;
@@ -54,32 +50,6 @@ function toUplinkPcm16(
   return null;
 }
 
-/**
- * Normalise a pushed Opus packet. Packets are opaque bytes, so the only
- * accepted forms are an `ArrayBuffer` or a `Uint8Array` view (copied when it
- * does not cover its whole backing buffer). PCM-shaped typed arrays are
- * rejected: they signal the caller forgot the session is in opus mode.
- */
-function toUplinkOpus(
-  packet: ArrayBuffer | Int16Array | Float32Array | Uint8Array
-): ArrayBuffer | null {
-  if (packet instanceof Uint8Array) {
-    return packet.byteOffset === 0 &&
-      packet.byteLength === packet.buffer.byteLength
-      ? (packet.buffer as ArrayBuffer)
-      : (packet.buffer.slice(
-          packet.byteOffset,
-          packet.byteOffset + packet.byteLength
-        ) as ArrayBuffer);
-  }
-
-  if (packet instanceof ArrayBuffer) {
-    return packet;
-  }
-
-  return null;
-}
-
 export class KrispVTSDK {
   private _state: ISDKStates;
 
@@ -94,7 +64,7 @@ export class KrispVTSDK {
   private _wsTransport: WebSocketTransportService | null = null;
   private _inputMode: "stream" | "push" | null = null;
   private _inputErrorReported = false;
-  private _format: VtAudioFormat = "pcm_s16le";
+  private _codec: IAudioCodec | null = null;
 
   constructor(config: IKrispVTSDKConfig) {
     this._state = States.INITIAL;
@@ -181,7 +151,6 @@ export class KrispVTSDK {
       this._errorHandler.emitError(err, VtErrorType.ValidationErrorClient);
       throw err;
     }
-    this._format = format;
 
     // ── Validate sample rate ───────────────────────────────────────────────
     // The service accepts 16 kHz only, and the SDK's capture and playback
@@ -196,10 +165,14 @@ export class KrispVTSDK {
       throw err;
     }
 
-    if (format === "opus" && !this._disableInternalPlayback) {
-      this._logger.info(
-        "VT Session: format is 'opus' – internal playback is disabled; consume packets via onRawAudioChunk"
-      );
+    // ── Check the environment can run the format ───────────────────────────
+    if (!isAudioFormatSupported(format)) {
+      const err = new Error(
+        `${VT_MESSAGES.UNSUPPORTED_FORMAT}: "${format}"`
+      ) as ICustomError;
+      err.code = VtErrorType.InvalidSessionConfigurations;
+      this._errorHandler.emitError(err, VtErrorType.InvalidSessionConfigurations);
+      throw err;
     }
 
     // ── Validate vocabulary ────────────────────────────────────────────────
@@ -258,6 +231,15 @@ export class KrispVTSDK {
 
     this._setState(States.READY);
 
+    // ── Wire-format codec: everything above it is PCM16 ───────────────────
+    this._codec?.close();
+    this._codec = createAudioCodec(format, {
+      onEncoded: (packet) => this._wsTransport?.sendAudio(packet),
+      onDecoded: (pcm) => this._deliverTranslatedAudio(pcm),
+      onError: (error) =>
+        this._errorHandler.emitError(error, VtErrorType.InternalErrorClient),
+    });
+
     // ── Connect WebSocket directly (auth via query param, config via ClientHello) ──
     this._logger.debug("VT Session: Connecting WebSocket...");
 
@@ -275,19 +257,7 @@ export class KrispVTSDK {
           }
         },
         onAudioChunk: (buffer: ArrayBuffer) => {
-          // Always notify advanced consumers first, with a fresh copy so they
-          // can transfer / detach the buffer without affecting playback.
-          const rawCb = this._hooks.onRawAudioChunk;
-          if (rawCb) {
-            try {
-              rawCb(buffer.slice(0), RAW_AUDIO_INFO[this._format]);
-            } catch (err) {
-              this._logger.warn("VT Session: onRawAudioChunk hook threw", err);
-            }
-          }
-          if (this._internalPlaybackEnabled()) {
-            this._audioOutput.addPCM16Chunk(buffer);
-          }
+          this._codec?.decode(buffer);
         },
         onError: (error: Error, code: VtErrorType, context?: Record<string, any>) => {
           this._errorHandler.emitError(error, code, context);
@@ -309,6 +279,8 @@ export class KrispVTSDK {
     } catch (e) {
       const error = e as ICustomError;
       this._logger.error(`${VT_MESSAGES.JOIN_FAILED}: ${error.message}`);
+      this._codec?.close();
+      this._codec = null;
       this._setState(States.ERROR);
       this._errorHandler.emitError(error, VtErrorType.InternalErrorServer);
       throw error;
@@ -323,15 +295,6 @@ export class KrispVTSDK {
    * emitted as a MediaStream via the onProcessedAudio hook.
    */
   public async process(stream: MediaStream): Promise<void> {
-    if (this._format === "opus") {
-      // Internal capture produces PCM16 only; the SDK does not encode Opus.
-      this._logger.warn(VT_MESSAGES.OPUS_PROCESS_UNSUPPORTED);
-      const err = new Error(VT_MESSAGES.OPUS_PROCESS_UNSUPPORTED) as ICustomError;
-      err.code = VtErrorType.InvalidSessionConfigurations;
-      this._errorHandler.emitError(err, VtErrorType.InvalidSessionConfigurations);
-      return;
-    }
-
     if (this._state === States.INITIAL) {
       this._logger.warn(VT_MESSAGES.SESSION_NOT_STARTED);
       const err = new Error(VT_MESSAGES.SESSION_NOT_STARTED) as ICustomError;
@@ -374,13 +337,13 @@ export class KrispVTSDK {
     // Initialise output stream and emit it via onProcessedAudio.
     // Skip if the consumer opted out of internal playback (they are
     // doing their own playback via onRawAudioChunk).
-    if (this._internalPlaybackEnabled()) {
+    if (!this._disableInternalPlayback) {
       this._audioOutput.initOutputStream();
     }
 
     // Start capturing input audio and streaming it over the WebSocket
     this._audioCapture = new AudioCaptureService(this._logger, (buffer: ArrayBuffer) => {
-      this._wsTransport?.sendAudio(buffer);
+      this._codec?.encode(buffer);
     });
 
     try {
@@ -402,13 +365,11 @@ export class KrispVTSDK {
    * {@link process}. Audio must be **mono at 16 kHz**; for any other rate use
    * {@link process}, which converts for you.
    *
-   * Accepted forms with the default `"pcm_s16le"` format:
+   * Accepted forms — always PCM, whatever `audio.format` the session uses on
+   * the wire (the SDK encodes it for you):
    * - `ArrayBuffer` — PCM16 little-endian; byte length must be even
    * - `Int16Array` — PCM16; views with a non-zero `byteOffset` are handled
    * - `Float32Array` — normalised samples in [-1, 1]
-   *
-   * With `format: "opus"` each call carries **one encoded Opus packet** as an
-   * `ArrayBuffer` or `Uint8Array`; PCM-shaped typed arrays are rejected.
    *
    * The first call after `start()` resolves moves the session to `PROCESSING` and,
    * unless `disableInternalPlayback` is set, emits the translated output stream via
@@ -420,9 +381,7 @@ export class KrispVTSDK {
    * **Never throws** — it is called from inside audio callbacks. State and input
    * problems are reported once per session through `onError` and the chunk dropped.
    */
-  public sendAudio(
-    audio: ArrayBuffer | Int16Array | Float32Array | Uint8Array
-  ): void {
+  public sendAudio(pcm: ArrayBuffer | Int16Array | Float32Array): void {
     if (this._state !== States.CONNECTED && this._state !== States.PROCESSING) {
       this._reportInputError(
         VT_MESSAGES.SESSION_NOT_STARTED,
@@ -439,13 +398,10 @@ export class KrispVTSDK {
       return;
     }
 
-    const buffer =
-      this._format === "opus" ? toUplinkOpus(audio) : toUplinkPcm16(audio);
+    const buffer = toUplinkPcm16(pcm);
     if (buffer === null) {
       this._reportInputError(
-        this._format === "opus"
-          ? VT_MESSAGES.INVALID_OPUS_INPUT
-          : VT_MESSAGES.INVALID_PCM_INPUT,
+        VT_MESSAGES.INVALID_PCM_INPUT,
         VtErrorType.InvalidInputData
       );
       return;
@@ -455,13 +411,13 @@ export class KrispVTSDK {
     if (this._inputMode === null) {
       this._inputMode = "push";
       this._setState(States.PROCESSING);
-      this._logger.info("VT Session: Starting audio processing (pushed audio)...");
-      if (this._internalPlaybackEnabled()) {
+      this._logger.info("VT Session: Starting audio processing (pushed PCM)...");
+      if (!this._disableInternalPlayback) {
         this._audioOutput.initOutputStream();
       }
     }
 
-    this._wsTransport?.sendAudio(buffer);
+    this._codec?.encode(buffer);
   }
 
   /**
@@ -482,6 +438,9 @@ export class KrispVTSDK {
         this._wsTransport = null;
       }
 
+      this._codec?.close();
+      this._codec = null;
+
       // Clean up audio output
       this._audioOutput.cleanup();
 
@@ -500,11 +459,23 @@ export class KrispVTSDK {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   /**
-   * Internal playback decodes PCM16 only, so it is active unless the consumer
-   * opted out or the session streams Opus.
+   * Translated audio, already decoded to PCM16 by the codec: notify raw-chunk
+   * consumers, then feed internal playback.
    */
-  private _internalPlaybackEnabled(): boolean {
-    return !this._disableInternalPlayback && this._format !== "opus";
+  private _deliverTranslatedAudio(pcm: ArrayBuffer): void {
+    // Always notify advanced consumers first, with a fresh copy so they
+    // can transfer / detach the buffer without affecting playback.
+    const rawCb = this._hooks.onRawAudioChunk;
+    if (rawCb) {
+      try {
+        rawCb(pcm.slice(0), RAW_AUDIO_INFO);
+      } catch (err) {
+        this._logger.warn("VT Session: onRawAudioChunk hook threw", err);
+      }
+    }
+    if (!this._disableInternalPlayback) {
+      this._audioOutput.addPCM16Chunk(pcm);
+    }
   }
 
   /**

@@ -70,8 +70,8 @@
           <div class="input-group">
             <label for="audioFormat">Audio Format</label>
             <select id="audioFormat" class="select-input">
-              <option value="pcm_s16le" selected>PCM16 (pcm_s16le) — SDK captures and plays audio</option>
-              <option value="opus">Opus — this demo encodes / decodes via WebCodecs</option>
+              <option value="pcm_s16le" selected>PCM16 (pcm_s16le)</option>
+              <option value="opus">Opus (the SDK encodes / decodes it)</option>
             </select>
           </div>
         </div>
@@ -189,9 +189,9 @@
 
             <!--
               Live stats sourced from the SDK's onRawAudioChunk hook.
-              Demonstrates that advanced consumers can tap the raw stream
-              (PCM16 or Opus packets) while the SDK still drives MediaStream
-              playback in PCM mode.
+              Demonstrates that advanced consumers can tap the raw PCM16
+              stream while the SDK still drives MediaStream playback. The
+              chunks are PCM16 even when the wire format is Opus.
             -->
             <div id="rawAudioStats" class="raw-audio-stats" style="display:none;">
               <span class="raw-audio-stats__label">Translated audio (raw):</span>

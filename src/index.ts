@@ -6,6 +6,7 @@
 export { KrispVTSDK } from "./KrispVTSDK";
 
 export { LogLevel, VtErrorType, VtEventType } from "./types";
+export { isAudioFormatSupported } from "./audio-codec";
 
 export type {
   ISDKStates,
